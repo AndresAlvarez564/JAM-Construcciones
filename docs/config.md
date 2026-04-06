@@ -10,7 +10,7 @@
 
 ### Backend
 - Runtime: Python (Lambda)
-- IaC: CDK Typescript
+- IaC: CDK Typescript (un solo stack por ambiente)
 - API: API Gateway REST
 - Auth: Cognito Authorizer
 - Patrón: Lambda por dominio (monolambda con router interno)
