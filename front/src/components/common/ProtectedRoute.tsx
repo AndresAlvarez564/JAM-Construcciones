@@ -1,7 +1,7 @@
 import { Navigate } from 'react-router-dom';
 import { Spin } from 'antd';
 import useAuth from '../../hooks/useAuth';
-import { Rol } from '../../types';
+import type { Rol } from '../../types';
 
 interface Props {
   children: React.ReactNode;

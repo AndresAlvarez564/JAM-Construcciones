@@ -3,6 +3,7 @@ import { AuthProvider } from './context/AuthContext';
 import ProtectedRoute from './components/common/ProtectedRoute';
 import AppLayout from './components/layout/AppLayout';
 import LoginPage from './pages/auth/LoginPage';
+import UnauthorizedPage from './pages/auth/UnauthorizedPage';
 import DashboardPage from './pages/dashboard/DashboardPage';
 import InventarioPage from './pages/inventario/InventarioPage';
 import ClientesPage from './pages/clientes/ClientesPage';
@@ -12,6 +13,7 @@ const App = () => (
     <AuthProvider>
       <Routes>
         <Route path="/login" element={<LoginPage />} />
+        <Route path="/unauthorized" element={<UnauthorizedPage />} />
         <Route
           path="/"
           element={

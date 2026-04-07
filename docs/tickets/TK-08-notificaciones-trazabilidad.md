@@ -33,9 +33,15 @@ de auditoría que permita identificar quién ejecutó cada acción principal.
 | Cliente captado | TK-05 | Interno (admin) | Email |
 | Intento de duplicado de cliente | TK-05 | Admin | Email |
 | Exclusividad vencida | TK-05 (EventBridge) | Admin | Email |
-| Cambio de estatus comercial | TK-06 | Cliente + corredor | Email |
+| Cambio de estatus: reserva | TK-06 | Cliente + corredor | Email + WhatsApp |
+| Cambio de estatus: separacion | TK-06 | Cliente + corredor | Email + WhatsApp |
+| Cambio de estatus: inicial | TK-06 | Cliente + corredor | Email + WhatsApp |
+| Cambio de estatus: desvinculado | TK-06 | Cliente + corredor | Email + WhatsApp |
 | Carga de inventario completada | TK-07 | Admin | Email |
 | Carga de inventario con errores | TK-07 | Admin | Email |
+
+> Las notificaciones al cliente solo se envían si tiene correo o teléfono registrado.
+> Canales externos (WhatsApp API, Email): costos de consumo a cargo del cliente.
 
 ---
 
@@ -119,4 +125,4 @@ Filtros disponibles: `tipo_evento`, `proyecto_id`, `ejecutado_por`, rango de fec
 - Visibilidad de mensajes en SQS: 30 segundos antes de reintento
 - Retención de mensajes en DLQ: 14 días
 - Proveedor de email (Resend u otro) configurado por variable de entorno por stage
-- Depende de: TK-01 (auth), TK-04 (bloqueos), TK-05 (captación), TK-06 (estatus)
+- Depende de: TK-01 (auth), TK-02 (modelo de datos), TK-04 (bloqueos), TK-05 (captación), TK-06 (estatus)

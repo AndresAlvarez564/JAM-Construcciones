@@ -38,6 +38,8 @@ unidades de forma rápida, clara y con información controlada por rol.
 | Inmobiliaria que bloqueó | ✔ | ✗ |
 | Fecha de bloqueo | ✔ | ✗ |
 
+> La lógica de visibilidad se aplica en el backend: la Lambda filtra los campos según el grupo Cognito del token antes de retornar la respuesta.
+
 ---
 
 ## Filtros
@@ -93,10 +95,13 @@ Respuesta inmobiliaria excluye esos campos
 
 - [ ] El usuario puede filtrar unidades por proyecto, etapa, torre y estado
 - [ ] Las inmobiliarias no ven cliente ni inmobiliaria que bloqueó
-- [ ] Admin ve todos los campos
+- [ ] Admin ve todos los campos incluyendo cliente e inmobiliaria bloqueadora
 - [ ] El timer de bloqueo se actualiza en tiempo real
+- [ ] El timer se resalta visualmente a 5h o menos de vencer
 - [ ] Los filtros de etapa y torre cargan en cascada
+- [ ] Inmobiliarias solo ven proyectos que tienen asignados
 - [ ] La vista es usable en desktop y móvil
+- [ ] Carga de inventario masiva desde Excel disponible para admin (TK-07)
 
 ---
 
@@ -105,4 +110,4 @@ Respuesta inmobiliaria excluye esos campos
 - El backend filtra los campos de respuesta según el grupo Cognito del token
 - Paginación recomendada si el proyecto supera 200 unidades visibles
 - El timer corre en el cliente, no requiere polling al backend
-- Depende de: TK-01 (auth) y TK-02 (modelo de datos)
+- Depende de: TK-01 (auth), TK-02 (modelo de datos)

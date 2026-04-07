@@ -74,6 +74,14 @@ ganó la carrera → se retorna 409.
 - Una inmobiliaria no puede bloquear la misma unidad si la liberó hace menos de 24h
 - Se valida consultando el historial de bloqueos en `jam-historial-bloqueos`
 
+## Relación con clientes
+
+| Caso | Comportamiento |
+|------|---------------|
+| Bloqueo con cliente registrado | Se guarda como captación con `unidad_id` |
+| Unidad pasa a `no_disponible` | Cliente se convierte en cliente activo (`reserva`) |
+| Bloqueo sin cliente | Admin puede asignar cliente manualmente |
+
 ---
 
 ## Liberación automática
@@ -151,4 +159,4 @@ Ambas acciones quedan registradas en el historial con el admin que las ejecutó.
 
 - `ConditionExpression` en DynamoDB es la única garantía real contra race conditions
 - EventBridge Scheduler (no EventBridge Rules) para tareas one-time por bloqueo
-- Depende de: TK-01 (auth), TK-02 (modelo), TK-03 (visualización)
+- Depende de: TK-01 (auth), TK-02 (modelo de datos)

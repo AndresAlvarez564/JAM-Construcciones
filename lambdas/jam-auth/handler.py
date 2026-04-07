@@ -87,8 +87,7 @@ def me(event):
             ).get('Item', {})
             perfil['proyectos'] = inmo.get('proyectos', [])
             perfil['inmobiliaria_nombre'] = inmo.get('nombre')
-        else:
-            perfil['proyectos'] = []  # admin ve todo, se filtra en cada módulo
+        # Admin no necesita lista de proyectos, tiene acceso a todos
 
         return response(200, perfil)
 

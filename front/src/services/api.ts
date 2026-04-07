@@ -1,28 +1,51 @@
-import axios from 'axios';
-import config from '../config';
+import { get, post, put, del } from 'aws-amplify/api';
+import { fetchAuthSession } from 'aws-amplify/auth';
 
-const api = axios.create({
-  baseURL: config.apiUrl,
-  headers: { 'Content-Type': 'application/json' },
-});
+const API_NAME = 'JamApi';
 
-// Adjunta el token en cada request
-api.interceptors.request.use((req) => {
-  const token = localStorage.getItem('access_token');
-  if (token) req.headers.Authorization = `Bearer ${token}`;
-  return req;
-});
-
-// Si el token expiró, limpia sesión y redirige al login
-api.interceptors.response.use(
-  (res) => res,
-  (error) => {
-    if (error.response?.status === 401) {
-      localStorage.clear();
-      window.location.href = '/login';
-    }
-    return Promise.reject(error);
+// Obtiene headers con token Cognito (Amplify lo refresca automáticamente)
+const authHeaders = async () => {
+  try {
+    const session = await fetchAuthSession();
+    const token = session.tokens?.idToken?.toString();
+    return token ? { Authorization: `Bearer ${token}` } : {};
+  } catch {
+    return {};
   }
-);
+};
 
-export default api;
+export const apiGet = async <T>(path: string): Promise<T> => {
+  const { body } = await get({
+    apiName: API_NAME,
+    path,
+    options: { headers: await authHeaders() },
+  }).response;
+  return (await body.json()) as T;
+};
+
+export const apiPost = async <T>(path: string, data: unknown): Promise<T> => {
+  const { body } = await post({
+    apiName: API_NAME,
+    path,
+    options: { headers: await authHeaders(), body: data as Record<string, unknown> },
+  }).response;
+  return (await body.json()) as T;
+};
+
+export const apiPut = async <T>(path: string, data: unknown): Promise<T> => {
+  const { body } = await put({
+    apiName: API_NAME,
+    path,
+    options: { headers: await authHeaders(), body: data as Record<string, unknown> },
+  }).response;
+  return (await body.json()) as T;
+};
+
+export const apiDelete = async <T>(path: string): Promise<T> => {
+  const { body } = await del({
+    apiName: API_NAME,
+    path,
+    options: { headers: await authHeaders() },
+  }).response;
+  return (await body.json()) as T;
+};

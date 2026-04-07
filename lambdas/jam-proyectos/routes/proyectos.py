@@ -1,0 +1,273 @@
+import json
+import uuid
+from datetime import datetime, timezone
+import boto3
+import os
+from boto3.dynamodb.conditions import Key
+from botocore.exceptions import ClientError
+from utils.response import ok, created, bad_request, not_found
+
+inventario = boto3.resource('dynamodb').Table(os.environ['INVENTARIO_TABLE'])
+
+
+def listar(event):
+    result = inventario.scan(
+        FilterExpression='sk = :meta AND #activo = :true',
+        ExpressionAttributeNames={'#activo': 'activo'},
+        ExpressionAttributeValues={':meta': 'METADATA', ':true': True}
+    )
+    proyectos = [p for p in result.get('Items', []) if p['pk'].startswith('PROYECTO#')]
+    return ok(proyectos)
+
+
+def detalle(proyecto_id):
+    result = inventario.get_item(
+        Key={'pk': f'PROYECTO#{proyecto_id}', 'sk': 'METADATA'}
+    )
+    item = result.get('Item')
+    if not item:
+        return not_found('Proyecto no encontrado')
+    return ok(item)
+
+
+def listar_etapas(proyecto_id):
+    result = inventario.query(
+        KeyConditionExpression=Key('pk').eq(f'PROYECTO#{proyecto_id}') & Key('sk').begins_with('ETAPA#')
+    )
+    items = result.get('Items', [])
+    # Ordenar por campo orden
+    items.sort(key=lambda x: x.get('orden', 0))
+    return ok(items)
+
+
+def listar_torres(proyecto_id):
+    result = inventario.query(
+        KeyConditionExpression=Key('pk').eq(f'PROYECTO#{proyecto_id}') & Key('sk').begins_with('TORRE#')
+    )
+    items = result.get('Items', [])
+    # Ordenar por campo orden
+    items.sort(key=lambda x: x.get('orden', 0))
+    return ok(items)
+
+
+def crear(event):
+    body = json.loads(event.get('body') or '{}')
+    nombre = body.get('nombre')
+    if not nombre:
+        return bad_request('nombre requerido')
+
+    proyecto_id = str(uuid.uuid4())[:8].upper()
+    item = {
+        'pk': f'PROYECTO#{proyecto_id}',
+        'sk': 'METADATA',
+        'proyecto_id': proyecto_id,
+        'nombre': nombre,
+        'descripcion': body.get('descripcion', ''),
+        'activo': True,
+        'creado_en': _now(),
+    }
+    inventario.put_item(Item=item)
+    return created(item)
+
+
+def crear_etapa(proyecto_id, event):
+    body = json.loads(event.get('body') or '{}')
+    nombre = body.get('nombre')
+    if not nombre:
+        return bad_request('nombre requerido')
+
+    etapa_id = str(uuid.uuid4())[:8].upper()
+    item = {
+        'pk': f'PROYECTO#{proyecto_id}',
+        'sk': f'ETAPA#{etapa_id}',
+        'etapa_id': etapa_id,
+        'nombre': nombre,
+        'orden': body.get('orden', 1),
+        'activo': True,
+        'creado_en': _now(),
+    }
+    inventario.put_item(Item=item)
+    return created(item)
+
+
+def crear_torre(proyecto_id, event):
+    body = json.loads(event.get('body') or '{}')
+    nombre = body.get('nombre')
+    etapa_id = body.get('etapa_id')
+    if not nombre or not etapa_id:
+        return bad_request('nombre y etapa_id requeridos')
+
+    torre_id = str(uuid.uuid4())[:8].upper()
+    item = {
+        'pk': f'PROYECTO#{proyecto_id}',
+        'sk': f'TORRE#{torre_id}',
+        'torre_id': torre_id,
+        'nombre': nombre,
+        'etapa_id': etapa_id,
+        'orden': body.get('orden', 1),
+        'activo': True,
+        'creado_en': _now(),
+    }
+    inventario.put_item(Item=item)
+    return created(item)
+
+
+def actualizar(proyecto_id, event):
+    body = json.loads(event.get('body') or '{}')
+    updates, values, names = [], {}, {}
+
+    if 'nombre' in body:
+        values[':nombre'] = body['nombre']
+        updates.append('#nombre = :nombre')
+        names['#nombre'] = 'nombre'
+
+    if 'descripcion' in body:
+        values[':desc'] = body['descripcion']
+        updates.append('descripcion = :desc')
+
+    if not updates:
+        return bad_request('No hay campos para actualizar')
+
+    values[':ts'] = _now()
+    updates.append('actualizado_en = :ts')
+
+    try:
+        inventario.update_item(
+            Key={'pk': f'PROYECTO#{proyecto_id}', 'sk': 'METADATA'},
+            UpdateExpression='SET ' + ', '.join(updates),
+            ConditionExpression='attribute_exists(pk)',
+            ExpressionAttributeValues=values,
+            **({"ExpressionAttributeNames": names} if names else {})
+        )
+        return ok({'message': 'Proyecto actualizado'})
+    except ClientError as e:
+        if e.response['Error']['Code'] == 'ConditionalCheckFailedException':
+            return not_found('Proyecto no encontrado')
+        raise
+
+
+def eliminar(proyecto_id):
+    try:
+        inventario.update_item(
+            Key={'pk': f'PROYECTO#{proyecto_id}', 'sk': 'METADATA'},
+            UpdateExpression='SET activo = :false',
+            ConditionExpression='attribute_exists(pk)',
+            ExpressionAttributeValues={':false': False}
+        )
+        return ok({'message': 'Proyecto desactivado'})
+    except ClientError as e:
+        if e.response['Error']['Code'] == 'ConditionalCheckFailedException':
+            return not_found('Proyecto no encontrado')
+        raise
+
+
+def actualizar_etapa(proyecto_id, etapa_id, event):
+    body = json.loads(event.get('body') or '{}')
+    updates, values, names = [], {}, {}
+
+    if 'nombre' in body:
+        values[':nombre'] = body['nombre']
+        updates.append('#nombre = :nombre')
+        names['#nombre'] = 'nombre'
+
+    if 'orden' in body:
+        values[':orden'] = int(body['orden'])
+        updates.append('#orden = :orden')
+        names['#orden'] = 'orden'
+
+    if not updates:
+        return bad_request('No hay campos para actualizar')
+
+    try:
+        inventario.update_item(
+            Key={'pk': f'PROYECTO#{proyecto_id}', 'sk': f'ETAPA#{etapa_id}'},
+            UpdateExpression='SET ' + ', '.join(updates),
+            ConditionExpression='attribute_exists(pk)',
+            ExpressionAttributeValues=values,
+            ExpressionAttributeNames=names
+        )
+        return ok({'message': 'Etapa actualizada'})
+    except ClientError as e:
+        if e.response['Error']['Code'] == 'ConditionalCheckFailedException':
+            return not_found('Etapa no encontrada')
+        raise
+
+
+def eliminar_etapa(proyecto_id, etapa_id):
+    # Verificar que no haya unidades asociadas
+    result = inventario.query(
+        KeyConditionExpression=Key('pk').eq(f'PROYECTO#{proyecto_id}') & Key('sk').begins_with('UNIDAD#'),
+        FilterExpression='etapa_id = :eid',
+        ExpressionAttributeValues={':eid': etapa_id}
+    )
+    if result.get('Items'):
+        return bad_request('No se puede eliminar: la etapa tiene unidades asociadas')
+
+    try:
+        inventario.delete_item(
+            Key={'pk': f'PROYECTO#{proyecto_id}', 'sk': f'ETAPA#{etapa_id}'},
+            ConditionExpression='attribute_exists(pk)'
+        )
+        return ok({'message': 'Etapa eliminada'})
+    except ClientError as e:
+        if e.response['Error']['Code'] == 'ConditionalCheckFailedException':
+            return not_found('Etapa no encontrada')
+        raise
+
+
+def actualizar_torre(proyecto_id, torre_id, event):
+    body = json.loads(event.get('body') or '{}')
+    updates, values, names = [], {}, {}
+
+    if 'nombre' in body:
+        values[':nombre'] = body['nombre']
+        updates.append('#nombre = :nombre')
+        names['#nombre'] = 'nombre'
+
+    if 'orden' in body:
+        values[':orden'] = int(body['orden'])
+        updates.append('#orden = :orden')
+        names['#orden'] = 'orden'
+
+    if not updates:
+        return bad_request('No hay campos para actualizar')
+
+    try:
+        inventario.update_item(
+            Key={'pk': f'PROYECTO#{proyecto_id}', 'sk': f'TORRE#{torre_id}'},
+            UpdateExpression='SET ' + ', '.join(updates),
+            ConditionExpression='attribute_exists(pk)',
+            ExpressionAttributeValues=values,
+            ExpressionAttributeNames=names
+        )
+        return ok({'message': 'Torre actualizada'})
+    except ClientError as e:
+        if e.response['Error']['Code'] == 'ConditionalCheckFailedException':
+            return not_found('Torre no encontrada')
+        raise
+
+
+def eliminar_torre(proyecto_id, torre_id):
+    # Verificar que no haya unidades asociadas
+    result = inventario.query(
+        KeyConditionExpression=Key('pk').eq(f'PROYECTO#{proyecto_id}') & Key('sk').begins_with('UNIDAD#'),
+        FilterExpression='torre_id = :tid',
+        ExpressionAttributeValues={':tid': torre_id}
+    )
+    if result.get('Items'):
+        return bad_request('No se puede eliminar: la torre tiene unidades asociadas')
+
+    try:
+        inventario.delete_item(
+            Key={'pk': f'PROYECTO#{proyecto_id}', 'sk': f'TORRE#{torre_id}'},
+            ConditionExpression='attribute_exists(pk)'
+        )
+        return ok({'message': 'Torre eliminada'})
+    except ClientError as e:
+        if e.response['Error']['Code'] == 'ConditionalCheckFailedException':
+            return not_found('Torre no encontrada')
+        raise
+
+
+def _now():
+    return datetime.now(timezone.utc).isoformat()

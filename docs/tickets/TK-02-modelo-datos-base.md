@@ -3,7 +3,7 @@
 ## Objetivo
 
 Construir la estructura base de datos para soportar proyectos, inventario, torres,
-etapas y unidades, dejando todo listo para integrarse con captación, bloqueos y CRM.
+etapas y unidades con sus atributos fundamentales.
 
 ---
 
@@ -73,11 +73,11 @@ Unidad individual en venta (apartamento, local, etc.).
 | torre_id | String | Referencia a la torre |
 | metraje | Number | m² |
 | precio | Number | Valor de la unidad |
-| estado | String | Ver estados abajo |
-| bloqueado_por | String | `inmobiliaria_id` si aplica |
-| cliente_id | String | Referencia al cliente si aplica |
-| fecha_bloqueo | String | ISO timestamp |
-| fecha_liberacion | String | ISO timestamp |
+| estado | String | Estado actual (default: `disponible`) |
+| bloqueado_por | String | inmobiliaria_id que bloqueó (TK-04) |
+| cliente_id | String | Referencia al cliente asociado (TK-05) |
+| fecha_bloqueo | String | ISO timestamp inicio bloqueo (TK-04) |
+| fecha_liberacion | String | ISO timestamp fin bloqueo (TK-04) |
 | creado_en | String | ISO timestamp |
 | actualizado_en | String | ISO timestamp |
 
@@ -87,11 +87,11 @@ Unidad individual en venta (apartamento, local, etc.).
 
 | Estado | Descripción |
 |--------|-------------|
-| `disponible` | Libre para bloquear o vender |
-| `bloqueada` | Reservada temporalmente por una inmobiliaria (48h) |
-| `no_disponible` | En proceso de venta activo |
+| `disponible` | Unidad disponible en inventario |
+| `bloqueada` | Bloqueada por inmobiliaria por 48h (TK-04) |
+| `no_disponible` | Reservada / en proceso de venta (TK-06) |
 | `vendida` | Venta cerrada |
-| `desvinculada` | Proceso cancelado, unidad liberada con historial |
+| `desvinculada` | Proceso cancelado, unidad liberada (TK-06) |
 
 ---
 
@@ -99,41 +99,61 @@ Unidad individual en venta (apartamento, local, etc.).
 
 | GSI | pk | sk | Uso |
 |-----|----|----|-----|
-| `gsi-estado` | `estado` | `fecha_bloqueo` | Consultar unidades por estado |
 | `gsi-torre` | `torre_id` | `sk` | Consultar unidades por torre |
-| `gsi-inmobiliaria` | `bloqueado_por` | `sk` | Ver bloqueos activos por inmobiliaria |
+| `gsi-estado` | `estado` | `creado_en` | Consultar unidades por estado |
+
+Nota: GSI adicionales como `gsi-inmobiliaria` se agregarán en TK-04 cuando se implemente el sistema de bloqueos.
 
 ---
 
 ## Endpoints base (Lambda Python)
 
+### Lectura (autenticados)
+
 | Método | Ruta | Descripción |
 |--------|------|-------------|
 | `GET` | `/proyectos` | Listar proyectos activos |
-| `GET` | `/proyectos/{id}/unidades` | Listar unidades de un proyecto |
+| `GET` | `/proyectos/{id}` | Detalle de un proyecto |
+| `GET` | `/proyectos/{id}/etapas` | Listar etapas de un proyecto |
+| `GET` | `/proyectos/{id}/torres` | Listar torres de un proyecto |
+| `GET` | `/proyectos/{id}/unidades` | Listar unidades (filtros: `estado`, `torre_id`, `etapa_id`) |
 | `GET` | `/proyectos/{id}/unidades/{unidad_id}` | Detalle de una unidad |
-| `PUT` | `/proyectos/{id}/unidades/{unidad_id}/estado` | Actualizar estado de unidad |
-| `POST` | `/admin/proyectos` | Crear proyecto (solo admin) |
-| `POST` | `/admin/proyectos/{id}/torres` | Crear torre (solo admin) |
 
----
+### Administración (solo admin)
 
-## Carga inicial de inventario
-
-- Soporte para importación desde `.xlsx`
-- El archivo se sube a S3, una Lambda lo procesa y carga las unidades en DynamoDB
-- El sistema ordena automáticamente por torre (A, B, C...) según el campo correspondiente
-- Los bloques se habilitan progresivamente: `activo = true` por torre o etapa
+| Método | Ruta | Descripción |
+|--------|------|-------------|
+| `POST` | `/admin/proyectos` | Crear proyecto |
+| `PUT` | `/admin/proyectos/{id}` | Editar proyecto |
+| `DELETE` | `/admin/proyectos/{id}` | Eliminar proyecto (soft delete: `activo=false`) |
+| `POST` | `/admin/proyectos/{id}/etapas` | Crear etapa |
+| `PUT` | `/admin/proyectos/{id}/etapas/{etapa_id}` | Editar etapa |
+| `DELETE` | `/admin/proyectos/{id}/etapas/{etapa_id}` | Eliminar etapa |
+| `POST` | `/admin/proyectos/{id}/torres` | Crear torre |
+| `PUT` | `/admin/proyectos/{id}/torres/{torre_id}` | Editar torre |
+| `DELETE` | `/admin/proyectos/{id}/torres/{torre_id}` | Eliminar torre |
+| `POST` | `/admin/proyectos/{id}/unidades` | Crear unidad |
+| `PUT` | `/admin/proyectos/{id}/unidades/{unidad_id}` | Editar unidad |
+| `DELETE` | `/admin/proyectos/{id}/unidades/{unidad_id}` | Eliminar unidad |
 
 ---
 
 ## Criterios de aceptación
 
-- [ ] Se pueden registrar proyectos, etapas, torres y unidades desde backend
-- [ ] Cada unidad queda correctamente asociada a su proyecto, etapa y torre
-- [ ] Los estados de unidad pueden leerse y actualizarse
-- [ ] Los GSI permiten consultas eficientes por estado, torre e inmobiliaria
-- [ ] Estructura lista para integrarse con TK-03 (captación) y TK-04 (bloqueos)
+- [ ] La tabla `jam-inventario` está creada en DynamoDB con la estructura definida
+- [ ] Se pueden crear, editar y eliminar proyectos
+- [ ] Se pueden crear, editar y eliminar etapas asociadas a un proyecto
+- [ ] Se pueden crear, editar y eliminar torres asociadas a un proyecto y etapa
+- [ ] Se pueden crear, editar y eliminar unidades con todos sus atributos
+- [ ] Los endpoints de lectura permiten listar y consultar proyectos, etapas, torres y unidades
+- [ ] Los filtros por `estado`, `torre_id` y `etapa_id` funcionan en el listado de unidades
+- [ ] Los GSI `gsi-torre` y `gsi-estado` funcionan correctamente
+- [ ] Todas las unidades se crean con estado `disponible` por defecto
+- [ ] El eliminado de proyectos es soft delete (`activo=false`)
+- [ ] Los endpoints de admin están protegidos por autenticación (TK-01)
+- [ ] El frontend muestra proyectos como tarjetas seleccionables (no lista desplegable)
+- [ ] El frontend permite crear, editar y eliminar etapas y torres desde la vista de inventario
+- [ ] El frontend permite crear, editar y eliminar unidades desde la vista de inventario
 
 ---
 
@@ -141,5 +161,9 @@ Unidad individual en venta (apartamento, local, etc.).
 
 - Single Table Design en DynamoDB para minimizar costos y latencia
 - Todos los timestamps en ISO 8601 UTC
-- El campo `estado` es la fuente de verdad para disponibilidad de la unidad
-- La carga por Excel no reemplaza unidades existentes, solo agrega nuevas
+- El campo `estado` inicia siempre en `disponible`
+- La estructura está diseñada para ser extensible: campos adicionales se agregarán en tickets posteriores sin necesidad de migraciones
+- Los IDs se generan con UUID v4
+- Eliminado de proyectos es soft delete; etapas, torres y unidades se eliminan físicamente (`delete_item`)
+- Al eliminar una etapa o torre, validar que no tenga unidades activas asociadas antes de proceder
+- Depende de: TK-01 (autenticación y autorización)

@@ -40,6 +40,8 @@ por proyecto durante 3 meses.
 | Inmobiliaria | Auto | Tomado del token de sesión |
 | Proyecto | Sí | Seleccionado en el formulario |
 
+> Todos los campos son editables por admin. La inmobiliaria solo puede registrar, no editar.
+
 ---
 
 ## Lógica de exclusividad
@@ -129,10 +131,17 @@ Cliente queda en estado: captacion
 | Método | Ruta | Rol | Descripción |
 |--------|------|-----|-------------|
 | `POST` | `/clientes` | inmobiliaria | Registrar nuevo cliente |
-| `GET` | `/clientes` | inmobiliaria | Listar clientes propios |
+| `GET` | `/clientes` | inmobiliaria | Listar clientes propios (captación + historial de reservas) |
 | `GET` | `/clientes/{cedula}/proyecto/{id}` | admin | Ver cliente en proyecto |
 | `PUT` | `/admin/clientes/{cedula}/proyecto/{id}` | admin | Editar datos del cliente |
 | `GET` | `/admin/clientes` | admin | Ver todos los clientes |
+
+## Vista por inmobiliaria
+
+Cada inmobiliaria tiene acceso a:
+- Pestaña **Captación**: clientes registrados por ella en cada proyecto
+- Pestaña **Inventario**: unidades disponibles de sus proyectos asignados
+- Pestaña **Historial**: clientes que lograron llegar a `reserva` o superior, con su estatus actual
 
 ---
 
@@ -153,4 +162,4 @@ Cliente queda en estado: captacion
 - La clave de unicidad es `cedula + proyecto_id` (pk + sk en DynamoDB)
 - EventBridge Scheduler one-time al registrar para el vencimiento de exclusividad
 - Admin puede editar cualquier campo del cliente; inmobiliaria solo puede registrar
-- Depende de: TK-01 (auth), TK-02 (modelo), TK-04 (bloqueos)
+- Depende de: TK-01 (auth), TK-02 (modelo de datos)

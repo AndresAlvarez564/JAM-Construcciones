@@ -17,7 +17,7 @@ const LoginPage = () => {
     setError('');
     setLoading(true);
     try {
-      await login(values);
+      await login(values.username, values.password);
       await refetch();
       navigate('/dashboard');
     } catch {
@@ -28,12 +28,12 @@ const LoginPage = () => {
   };
 
   return (
-    <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f0f2f5' }}>
-      <Card style={{ width: 380, boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}>
+    <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f0f2f5', padding: '16px' }}>
+      <Card style={{ width: '100%', maxWidth: 400, boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}>
         <Title level={3} style={{ textAlign: 'center', marginBottom: 24 }}>
           JAM Construcciones
         </Title>
-        {error && <Alert message={error} type="error" showIcon style={{ marginBottom: 16 }} />}
+        {error && <Alert title={error} type="error" showIcon style={{ marginBottom: 16 }} />}
         <Form layout="vertical" onFinish={onFinish}>
           <Form.Item name="username" rules={[{ required: true, message: 'Ingresa tu usuario' }]}>
             <Input prefix={<UserOutlined />} placeholder="Usuario" size="large" />

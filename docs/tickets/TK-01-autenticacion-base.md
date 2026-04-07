@@ -7,96 +7,113 @@ e inmobiliarias, garantizando control de acceso desde el inicio.
 
 ---
 
-## Arquitectura del ticket
+## Arquitectura
 
 ```
 Admin JAM / Corredores / Inmobiliarias
             ↓
         CloudFront
             ↓
-      S3 - Frontend Web (React + Vite)
+      S3 - Frontend (React + Vite)
          ↓           ↓
-   Amazon Cognito   API Gateway REST API
+   Amazon Cognito   API Gateway REST
+   User Pool        + Cognito Authorizer (ID token)
                         ↓
-                  Lambda API Core (Python)
+                  Lambda jam-auth (Python)
                         ↓
-                    DynamoDB
+                    DynamoDB jam-usuarios
 ```
 
 ---
 
-## Alcance
+## Lo implementado
 
 ### Infraestructura (CDK)
-- Cognito User Pool con dos grupos: `admin` y `inmobiliaria`
-- API Gateway REST con Cognito Authorizer
-- Lambda base para validación de sesión y permisos
-- Tabla DynamoDB `jam-usuarios` e `jam-inmobiliarias`
+- Cognito User Pool `jam-user-pool` con grupos `admin` e `inmobiliaria`
+- App Client con `USER_PASSWORD_AUTH` y `USER_SRP_AUTH`
+- API Gateway REST `jam-api` con Cognito Authorizer
+- Gateway Responses con headers CORS para errores 4XX y 5XX
+- Lambda `jam-auth` con permisos mínimos (least privilege)
+- Tabla DynamoDB `jam-usuarios` (Single Table Design)
+- GSI `gsi-por-inmobiliaria` para listar usuarios por inmobiliaria
 - S3 + CloudFront para el frontend
 
 ### Backend (Lambda Python)
-- Endpoint `POST /auth/login` → flujo de autenticación con Cognito
-- Endpoint `GET /auth/me` → retorna perfil y permisos del usuario autenticado
-- Middleware de autorización: valida grupo Cognito en cada request protegido
-- Lógica de permisos por proyecto (base para módulos siguientes)
+- `POST /auth/login` → público, llama a Cognito `InitiateAuth`
+- `GET /auth/me` → protegido, retorna perfil + rol + proyectos desde DynamoDB
+- El rol se lee desde DynamoDB, los grupos de Cognito son la fuente de verdad de acceso
 
 ### Frontend (React + Vite)
-- Configuración de Amplify con Cognito (REST API, no Hosted UI)
-- Pantalla de login
-- Protección de rutas por rol (`admin` / `inmobiliaria`)
-- Redirección automática si sesión inactiva o token expirado
-- Contexto global de usuario (rol, proyectos asignados)
+- Amplify v6 configurado con Cognito (`USER_PASSWORD_AUTH`, `loginWith: username`)
+- Amplify REST API client para todas las llamadas al API Gateway
+- Token usado: ID token (no access token) — requerido por Cognito Authorizer
+- `signOut` antes de `signIn` para evitar `UserAlreadyAuthenticatedException`
+- `AuthContext` con estado global del usuario (rol, proyectos, nombre)
+- `useAuth` hook para consumir el contexto
+- `ProtectedRoute` con validación de rol
+- Login page con Ant Design
+- Página `/unauthorized` para accesos denegados
+- Layout responsive: sidebar fijo en desktop, drawer en móvil
+- Navbar con hamburguesa en móvil
 
 ---
 
 ## Modelo de datos
 
-### Tabla: `jam-inmobiliarias`
-| Atributo | Tipo | Descripción |
-|----------|------|-------------|
-| pk | String | `INMOBILIARIA#<id>` |
-| sk | String | `METADATA` |
-| nombre | String | Nombre de la inmobiliaria |
-| correos | List | Lista de correos para notificaciones |
-| proyectos | List | IDs de proyectos asignados |
-| activo | Boolean | Acceso habilitado / deshabilitado |
-| creado_en | String | ISO timestamp |
-
 ### Tabla: `jam-usuarios`
-| Atributo | Tipo | Descripción |
-|----------|------|-------------|
-| pk | String | `USUARIO#<cognito_sub>` |
-| sk | String | `METADATA` |
-| nombre | String | Nombre de usuario (no correo) |
-| rol | String | `admin` / `inmobiliaria` |
-| inmobiliaria_id | String | Referencia si rol = inmobiliaria |
-| activo | Boolean | Estado del acceso |
+
+| pk | sk | tipo | atributos |
+|----|----|------|-----------|
+| `INMOBILIARIA#<id>` | `METADATA` | inmobiliaria | `nombre`, `correos[]`, `proyectos[]`, `activo` |
+| `USUARIO#<cognito_sub>` | `METADATA` | usuario | `nombre`, `rol`, `inmobiliaria_id`, `activo` |
+
+GSI: `gsi-por-inmobiliaria` → pk: `inmobiliaria_id`, sk: `pk`
 
 ---
 
 ## Lógica de acceso
 
-- Usuario `admin`: acceso total, ve todos los proyectos y datos
-- Usuario `inmobiliaria`: acceso solo a proyectos asignados en `jam-inmobiliarias`
-- El nombre de usuario para inmobiliarias es un alias (ej: "Vendedor1"), no un correo
-- Deshabilitar inmobiliaria: `activo = false` en DynamoDB + deshabilitar usuario en Cognito, sin borrar historial
+- `admin`: acceso total, ve todos los proyectos y datos
+- `inmobiliaria`: acceso solo a proyectos asignados en su registro de DynamoDB
+- Nombre de usuario: alias (ej: "Vendedor1", "Usuario"), no correo
+- Deshabilitar: `activo = false` en DynamoDB + deshabilitar en Cognito (historial preservado)
+- Múltiples correos por inmobiliaria: campo `correos[]` en `INMOBILIARIA#METADATA`
+
+---
+
+## Gestión de inmobiliarias
+
+### Crear inmobiliaria
+1. Admin crea registro en DynamoDB: `INMOBILIARIA#<id>` con `nombre`, `correos[]`, `proyectos[]`, `activo: true`
+2. Admin crea usuario en Cognito con nombre de usuario tipo alias (ej: "VendedorXYZ")
+3. Admin asigna el usuario al grupo `inmobiliaria` en Cognito
+4. Admin vincula el `cognito_sub` al registro de la inmobiliaria en DynamoDB
+
+### Deshabilitar inmobiliaria
+- `activo = false` en DynamoDB → bloquea acceso lógico
+- Deshabilitar usuario en Cognito → bloquea autenticación
+- Historial, clientes y bloqueos se conservan íntegros
 
 ---
 
 ## Criterios de aceptación
 
-- [ ] Login funcional para ambos roles
-- [ ] Rutas protegidas no accesibles sin token válido
-- [ ] El sistema diferencia correctamente `admin` e `inmobiliaria`
-- [ ] Token expirado redirige al login automáticamente
-- [ ] Admin puede ver todos los proyectos; inmobiliaria solo los asignados
-- [ ] Base técnica lista para continuar con TK-02 y TK-03
+- [x] Login funcional para ambos roles
+- [x] Rutas protegidas no accesibles sin token válido
+- [x] El sistema diferencia correctamente `admin` e `inmobiliaria`
+- [x] Token expirado redirige al login automáticamente
+- [x] Layout responsive (desktop y móvil)
+- [x] Base técnica lista para continuar con TK-02 y TK-03
+- [ ] Admin puede crear inmobiliarias con múltiples correos de notificación
+- [ ] Admin puede crear usuarios con nombre alias (no correo)
+- [ ] Admin puede deshabilitar una inmobiliaria sin perder su historial
+- [ ] Inmobiliarias solo ven los proyectos que les fueron asignados explícitamente
 
 ---
 
 ## Notas técnicas
 
-- API Gateway REST (no HTTP API) con Cognito Authorizer en todos los endpoints privados
-- Amplify configurado en modo REST, no GraphQL ni Hosted UI
-- Los grupos de Cognito (`admin`, `inmobiliaria`) se usan como fuente de verdad del rol
-- Ambientes: `dev` y `prod`, variables de entorno por stage en CDK
+- El Cognito Authorizer valida el ID token, no el access token
+- Amplify v6 usa `session.tokens.idToken` para el header `Authorization`
+- Un solo stack CDK sin sufijo de stage (`JamConstrucciones`)
+- Todos los recursos con `RemovalPolicy.RETAIN` para proteger datos en producción

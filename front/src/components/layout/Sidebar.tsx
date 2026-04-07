@@ -3,7 +3,11 @@ import { AppstoreOutlined, TeamOutlined, HomeOutlined, BarChartOutlined } from '
 import { useNavigate, useLocation } from 'react-router-dom';
 import useAuth from '../../hooks/useAuth';
 
-const Sidebar = () => {
+interface Props {
+  onSelect: () => void;
+}
+
+const Sidebar = ({ onSelect }: Props) => {
   const navigate = useNavigate();
   const location = useLocation();
   const { usuario } = useAuth();
@@ -22,7 +26,7 @@ const Sidebar = () => {
       mode="inline"
       selectedKeys={[location.pathname]}
       items={items}
-      onClick={({ key }) => navigate(key)}
+      onClick={({ key }) => { navigate(key); onSelect(); }}
       style={{ height: '100%', borderRight: 0 }}
     />
   );

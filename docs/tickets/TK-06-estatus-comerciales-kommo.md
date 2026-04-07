@@ -80,12 +80,16 @@ Al cambiar cualquier estatus, el frontend muestra:
 
 ## Mensajes por estatus
 
-| Estatus | Mensaje al cliente | Mensaje al corredor |
-|---------|-------------------|---------------------|
-| `reserva` | Bienvenida + próximos pasos + fecha límite de pago (30 días) | Confirmación de reserva |
-| `separacion` | Confirmación de pago + pasos para firma de contrato | Confirmación |
-| `inicial` | Notificación de inicio de pago de cuotas | Confirmación |
-| `desvinculado` | Notificación de inicio de proceso de desvinculación | Aviso de liberación de unidad |
+| Estatus | Mensaje al cliente | Mensaje al corredor | Fecha límite |
+|---------|-------------------|---------------------|-------------|
+| `captacion` | — | — | — |
+| `reserva` | Bienvenida + próximos pasos | Confirmación de reserva | Pago en 30 días (EventBridge) |
+| `separacion` | Confirmación de pago + pasos para firma | Confirmación | — |
+| `inicial` | Notificación de inicio de pago de cuotas | Confirmación | — |
+| `desvinculado` | Proceso de desvinculación iniciado | Aviso de liberación de unidad | — |
+
+> Las notificaciones solo se envían si el cliente tiene correo o teléfono registrado.
+> Con cada cambio de estatus el frontend muestra: "¿Desea enviar la notificación al cliente?" → [Sí] [No]
 
 ---
 
@@ -140,4 +144,5 @@ Al cambiar cualquier estatus, el frontend muestra:
 
 - SQS desacopla el sistema principal de Kommo y notificaciones
 - EventBridge puede usarse para la fecha límite de pago de reserva (30 días)
-- Depende de: TK-01 (auth), TK-02 (modelo), TK-04 (bloqueos), TK-05 (captación)
+- Canales de notificación: Email (Resend) + WhatsApp (Meta/Twilio) — costos a cargo del cliente
+- Depende de: TK-01 (auth), TK-02 (modelo de datos), TK-05 (captación de clientes)
