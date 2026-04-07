@@ -10,20 +10,14 @@ import * as iam from 'aws-cdk-lib/aws-iam';
 import { Construct } from 'constructs';
 import * as path from 'path';
 
-interface JamStackProps extends cdk.StackProps {
-  stage: string;
-}
-
 export class JamStack extends cdk.Stack {
-  constructor(scope: Construct, id: string, props: JamStackProps) {
+  constructor(scope: Construct, id: string, props?: cdk.StackProps) {
     super(scope, id, props);
-
-    const { stage } = props;
 
     // ─── COGNITO ────────────────────────────────────────────────────────────
 
     const userPool = new cognito.UserPool(this, 'JamUserPool', {
-      userPoolName: `jam-user-pool-${stage}`,
+      userPoolName: 'jam-user-pool',
       selfSignUpEnabled: false,
       signInAliases: { username: true },
       passwordPolicy: {
@@ -33,14 +27,12 @@ export class JamStack extends cdk.Stack {
         requireSymbols: false,
       },
       accountRecovery: cognito.AccountRecovery.EMAIL_ONLY,
-      removalPolicy: stage === 'prod'
-        ? cdk.RemovalPolicy.RETAIN
-        : cdk.RemovalPolicy.DESTROY,
+      removalPolicy: cdk.RemovalPolicy.RETAIN,
     });
 
     const userPoolClient = new cognito.UserPoolClient(this, 'JamUserPoolClient', {
       userPool,
-      userPoolClientName: `jam-client-${stage}`,
+      userPoolClientName: 'jam-client',
       authFlows: {
         userPassword: true,
         userSrp: true,
@@ -48,7 +40,6 @@ export class JamStack extends cdk.Stack {
       generateSecret: false,
     });
 
-    // Grupos de acceso
     new cognito.CfnUserPoolGroup(this, 'AdminGroup', {
       userPoolId: userPool.userPoolId,
       groupName: 'admin',
@@ -64,39 +55,60 @@ export class JamStack extends cdk.Stack {
     // ─── DYNAMODB ───────────────────────────────────────────────────────────
 
     const usuariosTable = new dynamodb.Table(this, 'JamUsuariosTable', {
-      tableName: `jam-usuarios-${stage}`,
+      tableName: 'jam-usuarios',
       partitionKey: { name: 'pk', type: dynamodb.AttributeType.STRING },
       sortKey: { name: 'sk', type: dynamodb.AttributeType.STRING },
       billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
-      removalPolicy: stage === 'prod'
-        ? cdk.RemovalPolicy.RETAIN
-        : cdk.RemovalPolicy.DESTROY,
+      removalPolicy: cdk.RemovalPolicy.RETAIN,
     });
 
-    // GSI: listar usuarios por inmobiliaria
     usuariosTable.addGlobalSecondaryIndex({
       indexName: 'gsi-por-inmobiliaria',
       partitionKey: { name: 'inmobiliaria_id', type: dynamodb.AttributeType.STRING },
       sortKey: { name: 'pk', type: dynamodb.AttributeType.STRING },
     });
 
+    const inventarioTable = new dynamodb.Table(this, 'JamInventarioTable', {
+      tableName: 'jam-inventario',
+      partitionKey: { name: 'pk', type: dynamodb.AttributeType.STRING },
+      sortKey: { name: 'sk', type: dynamodb.AttributeType.STRING },
+      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
+      removalPolicy: cdk.RemovalPolicy.RETAIN,
+    });
+
+    inventarioTable.addGlobalSecondaryIndex({
+      indexName: 'gsi-estado',
+      partitionKey: { name: 'estado', type: dynamodb.AttributeType.STRING },
+      sortKey: { name: 'fecha_bloqueo', type: dynamodb.AttributeType.STRING },
+    });
+
+    inventarioTable.addGlobalSecondaryIndex({
+      indexName: 'gsi-torre',
+      partitionKey: { name: 'torre_id', type: dynamodb.AttributeType.STRING },
+      sortKey: { name: 'sk', type: dynamodb.AttributeType.STRING },
+    });
+
+    inventarioTable.addGlobalSecondaryIndex({
+      indexName: 'gsi-inmobiliaria',
+      partitionKey: { name: 'bloqueado_por', type: dynamodb.AttributeType.STRING },
+      sortKey: { name: 'sk', type: dynamodb.AttributeType.STRING },
+    });
+
     // ─── LAMBDA jam-auth ────────────────────────────────────────────────────
 
     const authLambda = new lambda.Function(this, 'JamAuthLambda', {
-      functionName: `jam-auth-${stage}`,
+      functionName: 'jam-auth',
       runtime: lambda.Runtime.PYTHON_3_12,
       handler: 'handler.handler',
       code: lambda.Code.fromAsset(path.join(__dirname, '../../lambdas/jam-auth')),
       timeout: cdk.Duration.seconds(30),
       environment: {
-        STAGE: stage,
         USER_POOL_ID: userPool.userPoolId,
         USER_POOL_CLIENT_ID: userPoolClient.userPoolClientId,
         USUARIOS_TABLE: usuariosTable.tableName,
       },
     });
 
-    // Permisos mínimos para la lambda
     usuariosTable.grantReadWriteData(authLambda);
     authLambda.addToRolePolicy(new iam.PolicyStatement({
       actions: [
@@ -107,11 +119,28 @@ export class JamStack extends cdk.Stack {
       resources: [userPool.userPoolArn],
     }));
 
+    // ─── LAMBDA jam-proyectos ────────────────────────────────────────────────
+
+    const proyectosLambda = new lambda.Function(this, 'JamProyectosLambda', {
+      functionName: 'jam-proyectos',
+      runtime: lambda.Runtime.PYTHON_3_12,
+      handler: 'handler.handler',
+      code: lambda.Code.fromAsset(path.join(__dirname, '../../lambdas/jam-proyectos')),
+      timeout: cdk.Duration.seconds(30),
+      environment: {
+        INVENTARIO_TABLE: inventarioTable.tableName,
+        USUARIOS_TABLE: usuariosTable.tableName,
+      },
+    });
+
+    inventarioTable.grantReadWriteData(proyectosLambda);
+    usuariosTable.grantReadData(proyectosLambda);
+
     // ─── API GATEWAY ────────────────────────────────────────────────────────
 
     const api = new apigateway.RestApi(this, 'JamApi', {
-      restApiName: `jam-api-${stage}`,
-      deployOptions: { stageName: stage },
+      restApiName: 'jam-api',
+      deployOptions: { stageName: 'api' },
       defaultCorsPreflightOptions: {
         allowOrigins: apigateway.Cors.ALL_ORIGINS,
         allowMethods: apigateway.Cors.ALL_METHODS,
@@ -122,31 +151,150 @@ export class JamStack extends cdk.Stack {
     const cognitoAuthorizer = new apigateway.CognitoUserPoolsAuthorizer(
       this, 'JamCognitoAuthorizer', {
         cognitoUserPools: [userPool],
-        authorizerName: `jam-authorizer-${stage}`,
+        authorizerName: 'jam-authorizer',
       }
     );
 
     const authLambdaIntegration = new apigateway.LambdaIntegration(authLambda);
+    const proyectosLambdaIntegration = new apigateway.LambdaIntegration(proyectosLambda);
 
-    // POST /auth/login  → público
+    // /auth
     const authResource = api.root.addResource('auth');
     authResource.addResource('login').addMethod('POST', authLambdaIntegration);
-
-    // GET /auth/me → protegido
     authResource.addResource('me').addMethod('GET', authLambdaIntegration, {
       authorizer: cognitoAuthorizer,
       authorizationType: apigateway.AuthorizationType.COGNITO,
     });
 
-    // ─── S3 + CLOUDFRONT (Frontend) ─────────────────────────────────────────
+    // /proyectos
+    const proyectosResource = api.root.addResource('proyectos');
+    proyectosResource.addMethod('GET', proyectosLambdaIntegration, {
+      authorizer: cognitoAuthorizer,
+      authorizationType: apigateway.AuthorizationType.COGNITO,
+    });
+
+    const proyectoResource = proyectosResource.addResource('{proyecto_id}');
+    proyectoResource.addMethod('GET', proyectosLambdaIntegration, {
+      authorizer: cognitoAuthorizer,
+      authorizationType: apigateway.AuthorizationType.COGNITO,
+    });
+
+    const etapasPublicResource = proyectoResource.addResource('etapas');
+    etapasPublicResource.addMethod('GET', proyectosLambdaIntegration, {
+      authorizer: cognitoAuthorizer,
+      authorizationType: apigateway.AuthorizationType.COGNITO,
+    });
+
+    const torresPublicResource = proyectoResource.addResource('torres');
+    torresPublicResource.addMethod('GET', proyectosLambdaIntegration, {
+      authorizer: cognitoAuthorizer,
+      authorizationType: apigateway.AuthorizationType.COGNITO,
+    });
+
+    const unidadesResource = proyectoResource.addResource('unidades');
+    unidadesResource.addMethod('GET', proyectosLambdaIntegration, {
+      authorizer: cognitoAuthorizer,
+      authorizationType: apigateway.AuthorizationType.COGNITO,
+    });
+
+    const unidadResource = unidadesResource.addResource('{unidad_id}');
+    unidadResource.addMethod('GET', proyectosLambdaIntegration, {
+      authorizer: cognitoAuthorizer,
+      authorizationType: apigateway.AuthorizationType.COGNITO,
+    });
+    unidadResource.addResource('estado').addMethod('PUT', proyectosLambdaIntegration, {
+      authorizer: cognitoAuthorizer,
+      authorizationType: apigateway.AuthorizationType.COGNITO,
+    });
+
+    // /admin/proyectos
+    const adminResource = api.root.addResource('admin');
+    const adminProyectosResource = adminResource.addResource('proyectos');
+    adminProyectosResource.addMethod('POST', proyectosLambdaIntegration, {
+      authorizer: cognitoAuthorizer,
+      authorizationType: apigateway.AuthorizationType.COGNITO,
+    });
+
+    const adminProyectoResource = adminProyectosResource.addResource('{proyecto_id}');
+    adminProyectoResource.addMethod('PUT', proyectosLambdaIntegration, {
+      authorizer: cognitoAuthorizer,
+      authorizationType: apigateway.AuthorizationType.COGNITO,
+    });
+    adminProyectoResource.addMethod('DELETE', proyectosLambdaIntegration, {
+      authorizer: cognitoAuthorizer,
+      authorizationType: apigateway.AuthorizationType.COGNITO,
+    });
+
+    // /admin/proyectos/{id}/etapas
+    const adminEtapasResource = adminProyectoResource.addResource('etapas');
+    adminEtapasResource.addMethod('POST', proyectosLambdaIntegration, {
+      authorizer: cognitoAuthorizer,
+      authorizationType: apigateway.AuthorizationType.COGNITO,
+    });
+    const adminEtapaResource = adminEtapasResource.addResource('{etapa_id}');
+    adminEtapaResource.addMethod('PUT', proyectosLambdaIntegration, {
+      authorizer: cognitoAuthorizer,
+      authorizationType: apigateway.AuthorizationType.COGNITO,
+    });
+    adminEtapaResource.addMethod('DELETE', proyectosLambdaIntegration, {
+      authorizer: cognitoAuthorizer,
+      authorizationType: apigateway.AuthorizationType.COGNITO,
+    });
+
+    // /admin/proyectos/{id}/torres
+    const adminTorresResource = adminProyectoResource.addResource('torres');
+    adminTorresResource.addMethod('POST', proyectosLambdaIntegration, {
+      authorizer: cognitoAuthorizer,
+      authorizationType: apigateway.AuthorizationType.COGNITO,
+    });
+    const adminTorreResource = adminTorresResource.addResource('{torre_id}');
+    adminTorreResource.addMethod('PUT', proyectosLambdaIntegration, {
+      authorizer: cognitoAuthorizer,
+      authorizationType: apigateway.AuthorizationType.COGNITO,
+    });
+    adminTorreResource.addMethod('DELETE', proyectosLambdaIntegration, {
+      authorizer: cognitoAuthorizer,
+      authorizationType: apigateway.AuthorizationType.COGNITO,
+    });
+
+    // /admin/proyectos/{id}/unidades
+    const adminUnidadesResource = adminProyectoResource.addResource('unidades');
+    adminUnidadesResource.addMethod('POST', proyectosLambdaIntegration, {
+      authorizer: cognitoAuthorizer,
+      authorizationType: apigateway.AuthorizationType.COGNITO,
+    });
+    const adminUnidadResource = adminUnidadesResource.addResource('{unidad_id}');
+    adminUnidadResource.addMethod('PUT', proyectosLambdaIntegration, {
+      authorizer: cognitoAuthorizer,
+      authorizationType: apigateway.AuthorizationType.COGNITO,
+    });
+    adminUnidadResource.addMethod('DELETE', proyectosLambdaIntegration, {
+      authorizer: cognitoAuthorizer,
+      authorizationType: apigateway.AuthorizationType.COGNITO,
+    });
+
+    // CORS en respuestas de error del Gateway (401, 403, 5xx)
+    api.addGatewayResponse('GatewayResponseDefault4XX', {
+      type: apigateway.ResponseType.DEFAULT_4XX,
+      responseHeaders: {
+        'Access-Control-Allow-Origin': "'*'",
+        'Access-Control-Allow-Headers': "'Content-Type,Authorization'",
+      },
+    });
+    api.addGatewayResponse('GatewayResponseDefault5XX', {
+      type: apigateway.ResponseType.DEFAULT_5XX,
+      responseHeaders: {
+        'Access-Control-Allow-Origin': "'*'",
+        'Access-Control-Allow-Headers': "'Content-Type,Authorization'",
+      },
+    });
+
+    // ─── S3 + CLOUDFRONT ────────────────────────────────────────────────────
 
     const frontendBucket = new s3.Bucket(this, 'JamFrontendBucket', {
-      bucketName: `jam-frontend-${stage}-${this.account}`,
+      bucketName: `jam-frontend-${this.account}`,
       blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
-      removalPolicy: stage === 'prod'
-        ? cdk.RemovalPolicy.RETAIN
-        : cdk.RemovalPolicy.DESTROY,
-      autoDeleteObjects: stage !== 'prod',
+      removalPolicy: cdk.RemovalPolicy.RETAIN,
     });
 
     const distribution = new cloudfront.Distribution(this, 'JamDistribution', {
@@ -157,16 +305,8 @@ export class JamStack extends cdk.Stack {
       },
       defaultRootObject: 'index.html',
       errorResponses: [
-        {
-          httpStatus: 403,
-          responseHttpStatus: 200,
-          responsePagePath: '/index.html',
-        },
-        {
-          httpStatus: 404,
-          responseHttpStatus: 200,
-          responsePagePath: '/index.html',
-        },
+        { httpStatus: 403, responseHttpStatus: 200, responsePagePath: '/index.html' },
+        { httpStatus: 404, responseHttpStatus: 200, responsePagePath: '/index.html' },
       ],
     });
 
