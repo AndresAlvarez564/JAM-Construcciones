@@ -63,6 +63,12 @@ export class JamStack extends cdk.Stack {
     });
 
     usuariosTable.addGlobalSecondaryIndex({
+      indexName: 'gsi-tipo',
+      partitionKey: { name: 'tipo', type: dynamodb.AttributeType.STRING },
+      sortKey: { name: 'creado_en', type: dynamodb.AttributeType.STRING },
+    });
+
+    usuariosTable.addGlobalSecondaryIndex({
       indexName: 'gsi-por-inmobiliaria',
       partitionKey: { name: 'inmobiliaria_id', type: dynamodb.AttributeType.STRING },
       sortKey: { name: 'pk', type: dynamodb.AttributeType.STRING },
@@ -74,6 +80,12 @@ export class JamStack extends cdk.Stack {
       sortKey: { name: 'sk', type: dynamodb.AttributeType.STRING },
       billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
       removalPolicy: cdk.RemovalPolicy.RETAIN,
+    });
+
+    inventarioTable.addGlobalSecondaryIndex({
+      indexName: 'gsi-tipo',
+      partitionKey: { name: 'tipo', type: dynamodb.AttributeType.STRING },
+      sortKey: { name: 'creado_en', type: dynamodb.AttributeType.STRING },
     });
 
     inventarioTable.addGlobalSecondaryIndex({
@@ -115,6 +127,11 @@ export class JamStack extends cdk.Stack {
         'cognito-idp:InitiateAuth',
         'cognito-idp:AdminGetUser',
         'cognito-idp:AdminListGroupsForUser',
+        'cognito-idp:AdminCreateUser',
+        'cognito-idp:AdminSetUserPassword',
+        'cognito-idp:AdminAddUserToGroup',
+        'cognito-idp:AdminEnableUser',
+        'cognito-idp:AdminDisableUser',
       ],
       resources: [userPool.userPoolArn],
     }));
@@ -207,8 +224,55 @@ export class JamStack extends cdk.Stack {
       authorizationType: apigateway.AuthorizationType.COGNITO,
     });
 
-    // /admin/proyectos
+    // /admin
     const adminResource = api.root.addResource('admin');
+
+    // /admin/inmobiliarias
+    const adminInmobiliariasResource = adminResource.addResource('inmobiliarias');
+    adminInmobiliariasResource.addMethod('GET', authLambdaIntegration, {
+      authorizer: cognitoAuthorizer,
+      authorizationType: apigateway.AuthorizationType.COGNITO,
+    });
+    adminInmobiliariasResource.addMethod('POST', authLambdaIntegration, {
+      authorizer: cognitoAuthorizer,
+      authorizationType: apigateway.AuthorizationType.COGNITO,
+    });
+
+    const adminInmoResource = adminInmobiliariasResource.addResource('{inmo_id}');
+    adminInmoResource.addMethod('PUT', authLambdaIntegration, {
+      authorizer: cognitoAuthorizer,
+      authorizationType: apigateway.AuthorizationType.COGNITO,
+    });
+    adminInmoResource.addResource('deshabilitar').addMethod('PUT', authLambdaIntegration, {
+      authorizer: cognitoAuthorizer,
+      authorizationType: apigateway.AuthorizationType.COGNITO,
+    });
+    adminInmoResource.addResource('habilitar').addMethod('PUT', authLambdaIntegration, {
+      authorizer: cognitoAuthorizer,
+      authorizationType: apigateway.AuthorizationType.COGNITO,
+    });
+
+    const adminInmoUsuariosResource = adminInmoResource.addResource('usuarios');
+    adminInmoUsuariosResource.addMethod('GET', authLambdaIntegration, {
+      authorizer: cognitoAuthorizer,
+      authorizationType: apigateway.AuthorizationType.COGNITO,
+    });
+    adminInmoUsuariosResource.addMethod('POST', authLambdaIntegration, {
+      authorizer: cognitoAuthorizer,
+      authorizationType: apigateway.AuthorizationType.COGNITO,
+    });
+
+    const adminUsuarioResource = adminInmoUsuariosResource.addResource('{usuario_id}');
+    adminUsuarioResource.addResource('deshabilitar').addMethod('PUT', authLambdaIntegration, {
+      authorizer: cognitoAuthorizer,
+      authorizationType: apigateway.AuthorizationType.COGNITO,
+    });
+    adminUsuarioResource.addResource('habilitar').addMethod('PUT', authLambdaIntegration, {
+      authorizer: cognitoAuthorizer,
+      authorizationType: apigateway.AuthorizationType.COGNITO,
+    });
+
+    // /admin/proyectos
     const adminProyectosResource = adminResource.addResource('proyectos');
     adminProyectosResource.addMethod('POST', proyectosLambdaIntegration, {
       authorizer: cognitoAuthorizer,

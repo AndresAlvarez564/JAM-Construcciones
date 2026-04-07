@@ -1,5 +1,5 @@
 import { Menu } from 'antd';
-import { AppstoreOutlined, TeamOutlined, HomeOutlined, BarChartOutlined } from '@ant-design/icons';
+import { AppstoreOutlined, TeamOutlined, HomeOutlined, BarChartOutlined, BankOutlined } from '@ant-design/icons';
 import { useNavigate, useLocation } from 'react-router-dom';
 import useAuth from '../../hooks/useAuth';
 
@@ -11,14 +11,16 @@ const Sidebar = ({ onSelect }: Props) => {
   const navigate = useNavigate();
   const location = useLocation();
   const { usuario } = useAuth();
+  const isAdmin = usuario?.rol === 'admin';
 
   const items = [
     { key: '/dashboard', icon: <HomeOutlined />, label: 'Dashboard' },
     { key: '/inventario', icon: <AppstoreOutlined />, label: 'Inventario' },
     { key: '/clientes', icon: <TeamOutlined />, label: 'Clientes' },
-    ...(usuario?.rol === 'admin'
-      ? [{ key: '/reportes', icon: <BarChartOutlined />, label: 'Reportes' }]
-      : []),
+    ...(isAdmin ? [
+      { key: '/inmobiliarias', icon: <BankOutlined />, label: 'Inmobiliarias' },
+      { key: '/reportes', icon: <BarChartOutlined />, label: 'Reportes' },
+    ] : []),
   ];
 
   return (

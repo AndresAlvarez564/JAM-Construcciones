@@ -11,13 +11,13 @@ inventario = boto3.resource('dynamodb').Table(os.environ['INVENTARIO_TABLE'])
 
 
 def listar(event):
-    result = inventario.scan(
-        FilterExpression='sk = :meta AND #activo = :true',
-        ExpressionAttributeNames={'#activo': 'activo'},
-        ExpressionAttributeValues={':meta': 'METADATA', ':true': True}
+    result = inventario.query(
+        IndexName='gsi-tipo',
+        KeyConditionExpression=Key('tipo').eq('PROYECTO'),
+        FilterExpression='activo = :true',
+        ExpressionAttributeValues={':true': True}
     )
-    proyectos = [p for p in result.get('Items', []) if p['pk'].startswith('PROYECTO#')]
-    return ok(proyectos)
+    return ok(result.get('Items', []))
 
 
 def detalle(proyecto_id):
@@ -57,14 +57,16 @@ def crear(event):
         return bad_request('nombre requerido')
 
     proyecto_id = str(uuid.uuid4())[:8].upper()
+    now = _now()
     item = {
         'pk': f'PROYECTO#{proyecto_id}',
         'sk': 'METADATA',
+        'tipo': 'PROYECTO',
         'proyecto_id': proyecto_id,
         'nombre': nombre,
         'descripcion': body.get('descripcion', ''),
         'activo': True,
-        'creado_en': _now(),
+        'creado_en': now,
     }
     inventario.put_item(Item=item)
     return created(item)

@@ -65,8 +65,15 @@ const InventarioPage = () => {
   useEffect(() => { if (proyectoId) cargarUnidades(); }, [filtroTorre, filtroEtapa]);
 
   const cargarProyectos = async () => {
-    try { setProyectos(await getProyectos()); }
-    catch { message.error('Error al cargar proyectos'); }
+    try {
+      const todos = await getProyectos();
+      // Inmobiliarias solo ven sus proyectos asignados
+      if (usuario?.rol === 'inmobiliaria' && usuario.proyectos?.length) {
+        setProyectos(todos.filter(p => usuario.proyectos!.includes(p.proyecto_id)));
+      } else {
+        setProyectos(todos);
+      }
+    } catch { message.error('Error al cargar proyectos'); }
   };
 
   const cargarEtapasYTorres = async () => {

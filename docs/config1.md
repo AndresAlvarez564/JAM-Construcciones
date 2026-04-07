@@ -103,6 +103,63 @@ Reemplaza `<proyecto>` con el prefijo corto de tu proyecto (ej: `jam`, `crm`, `o
 
 ---
 
+## Buenas prácticas de acceso a datos
+
+### Filtrado por rol: siempre en el backend
+El filtrado de datos sensibles debe ocurrir en la Lambda, nunca en el frontend.
+Aunque el frontend no muestre ciertos datos, si los recibe en la respuesta son visibles en el network tab del navegador.
+
+Regla: si un usuario no debe ver un dato, el backend no debe enviarlo.
+
+### Scan vs Query en DynamoDB
+DynamoDB cobra por KB leído, no por filas devueltas.
+
+| Operación | Comportamiento | Recomendación |
+|-----------|---------------|---------------|
+| `Query` | Lee solo los items del `pk` especificado | Usar siempre que sea posible |
+| `Scan` | Lee toda la tabla, luego filtra | Evitar en producción con tablas grandes |
+| `Scan` + `FilterExpression` | Filtra en memoria después de leer todo | No reduce el costo del scan |
+
+Esto aplica igual para admin que para cualquier rol. El rol no cambia el costo de la operación.
+
+### GSI (Global Secondary Index)
+Un GSI es una tabla secundaria que DynamoDB mantiene automáticamente. Permite hacer `Query` eficientes sobre atributos que no son el pk/sk de la tabla principal.
+
+Patrón usado en este proyecto: campo `tipo` como pk del GSI.
+
+```
+# Sin GSI → Scan de toda la tabla
+table.scan(FilterExpression='sk = METADATA AND pk starts_with PROYECTO#')
+# Lee TODOS los items de la tabla
+
+# Con GSI → Query directo
+table.query(IndexName='gsi-tipo', KeyConditionExpression=Key('tipo').eq('PROYECTO'))
+# Lee SOLO los proyectos
+```
+
+GSIs definidos:
+
+| Tabla | GSI | pk | sk | Uso |
+|-------|-----|----|----|-----|
+| `jam-inventario` | `gsi-tipo` | `tipo` | `creado_en` | Listar proyectos |
+| `jam-inventario` | `gsi-estado` | `estado` | `fecha_bloqueo` | Unidades por estado |
+| `jam-inventario` | `gsi-torre` | `torre_id` | `sk` | Unidades por torre |
+| `jam-usuarios` | `gsi-tipo` | `tipo` | `creado_en` | Listar inmobiliarias |
+| `jam-usuarios` | `gsi-por-inmobiliaria` | `inmobiliaria_id` | `pk` | Usuarios por inmobiliaria |
+
+Valores del campo `tipo` por entidad:
+
+| Entidad | tipo |
+|---------|------|
+| Proyecto | `PROYECTO` |
+| Inmobiliaria | `INMOBILIARIA` |
+| Usuario | `USUARIO` |
+
+### Paginación
+Para listas que pueden crecer (unidades, clientes), implementar paginación con `Limit` + `ExclusiveStartKey` en DynamoDB y devolver `nextToken` al frontend.
+
+---
+
 ## Infraestructura base (CDK)
 
 Recursos mínimos que define el stack:

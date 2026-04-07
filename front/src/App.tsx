@@ -7,6 +7,7 @@ import UnauthorizedPage from './pages/auth/UnauthorizedPage';
 import DashboardPage from './pages/dashboard/DashboardPage';
 import InventarioPage from './pages/inventario/InventarioPage';
 import ClientesPage from './pages/clientes/ClientesPage';
+import InmobiliariasPage from './pages/inmobiliarias/InmobiliariasPage';
 
 const App = () => (
   <BrowserRouter>
@@ -26,6 +27,14 @@ const App = () => (
           <Route path="dashboard" element={<DashboardPage />} />
           <Route path="inventario" element={<InventarioPage />} />
           <Route path="clientes" element={<ClientesPage />} />
+          <Route
+            path="inmobiliarias"
+            element={
+              <ProtectedRoute roles={['admin']}>
+                <InmobiliariasPage />
+              </ProtectedRoute>
+            }
+          />
         </Route>
         <Route path="*" element={<Navigate to="/dashboard" replace />} />
       </Routes>
