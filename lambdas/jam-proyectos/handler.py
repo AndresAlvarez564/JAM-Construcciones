@@ -1,6 +1,6 @@
 from utils.auth import get_rol, require_admin
 from utils.response import forbidden, not_found
-from routes import proyectos, unidades
+from routes import proyectos, etapas, torres, unidades
 
 
 def handler(event, context):
@@ -23,10 +23,10 @@ def handler(event, context):
         return proyectos.detalle(proyecto_id)
 
     if method == 'GET' and path.endswith('/etapas'):
-        return proyectos.listar_etapas(proyecto_id)
+        return etapas.listar(proyecto_id)
 
     if method == 'GET' and path.endswith('/torres'):
-        return proyectos.listar_torres(proyecto_id)
+        return torres.listar(proyecto_id)
 
     if method == 'GET' and proyecto_id and path.endswith('/unidades'):
         return unidades.listar(proyecto_id, event, rol)
@@ -52,24 +52,24 @@ def handler(event, context):
     # ===== ETAPAS =====
 
     if method == 'POST' and path.endswith('/etapas') and is_admin:
-        return proyectos.crear_etapa(proyecto_id, event)
+        return etapas.crear(proyecto_id, event)
 
     if method == 'PUT' and etapa_id and is_admin:
-        return proyectos.actualizar_etapa(proyecto_id, etapa_id, event)
+        return etapas.actualizar(proyecto_id, etapa_id, event)
 
     if method == 'DELETE' and etapa_id and is_admin:
-        return proyectos.eliminar_etapa(proyecto_id, etapa_id)
+        return etapas.eliminar(proyecto_id, etapa_id)
 
     # ===== TORRES =====
 
     if method == 'POST' and path.endswith('/torres') and is_admin:
-        return proyectos.crear_torre(proyecto_id, event)
+        return torres.crear(proyecto_id, event)
 
     if method == 'PUT' and torre_id and is_admin:
-        return proyectos.actualizar_torre(proyecto_id, torre_id, event)
+        return torres.actualizar(proyecto_id, torre_id, event)
 
     if method == 'DELETE' and torre_id and is_admin:
-        return proyectos.eliminar_torre(proyecto_id, torre_id)
+        return torres.eliminar(proyecto_id, torre_id)
 
     # ===== UNIDADES =====
 

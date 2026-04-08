@@ -20,16 +20,41 @@ Stack serverless genérico con React en el frontend, autenticación con Cognito,
 - API: API Gateway REST
 - Auth: Cognito Authorizer (valida ID token)
 
-### Patrón Lambda por dominio
+## Estructura de Lambdas
 
-Cada dominio tiene su propia Lambda con esta estructura interna:
+Cada Lambda sigue el mismo patrón:
 
 ```
 lambdas/<nombre>/
-├── handler.py      # solo enruta al módulo correcto
-├── routes/         # lógica por recurso
+├── handler.py      # solo enruta, sin lógica de negocio
+├── routes/         # un archivo por entidad o sub-recurso
 └── utils/          # helpers reutilizables (auth, response)
 ```
+
+### Criterio de división de archivos en routes/
+
+Un archivo por entidad. Cuando una entidad tiene sub-recursos con operaciones propias, cada sub-recurso tiene su propio archivo.
+
+Límite intencional: cada archivo en `routes/` no debe superar ~200 líneas. Si se supera, es señal de que mezcla responsabilidades y hay que dividirlo en sub-recursos.
+
+```
+# Correcto — dividido por entidad y sub-recurso
+routes/
+  proyectos.py     # listar, detalle, crear, actualizar, eliminar proyecto
+  etapas.py        # listar, crear, actualizar, eliminar etapa
+
+# Incorrecto — dividido por método HTTP (mezcla entidades)
+routes/
+  gets.py
+  posts.py
+
+# Incorrecto — dividido por operación (fragmenta el contexto)
+routes/
+  proyectos_create.py
+  proyectos_update.py
+```
+
+Excepción: operaciones con lógica de negocio compleja e independiente pueden merecer su propio archivo aunque pertenezcan a una entidad existente.
 
 ### Autenticación
 - Amazon Cognito User Pool

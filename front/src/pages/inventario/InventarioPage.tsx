@@ -34,6 +34,7 @@ const InventarioPage = () => {
   const [proyectoId, setProyectoId] = useState('');
   const [filtroTorre, setFiltroTorre] = useState('');
   const [filtroEtapa, setFiltroEtapa] = useState('');
+  const [filtroEstado, setFiltroEstado] = useState('');
   const [loading, setLoading] = useState(false);
 
   // modales proyecto
@@ -54,6 +55,7 @@ const InventarioPage = () => {
   const [formTorre] = Form.useForm();
   const [etapaEditando, setEtapaEditando] = useState<Etapa | null>(null);
   const [torreEditando, setTorreEditando] = useState<Torre | null>(null);
+  const [etapaUnidadSeleccionada, setEtapaUnidadSeleccionada] = useState<string>('');
 
   useEffect(() => { cargarProyectos(); }, []);
 
@@ -62,7 +64,7 @@ const InventarioPage = () => {
     else { setUnidades([]); setEtapas([]); setTorres([]); }
   }, [proyectoId]);
 
-  useEffect(() => { if (proyectoId) cargarUnidades(); }, [filtroTorre, filtroEtapa]);
+  useEffect(() => { if (proyectoId) cargarUnidades(); }, [filtroTorre, filtroEtapa, filtroEstado]);
 
   const cargarProyectos = async () => {
     try {
@@ -89,6 +91,7 @@ const InventarioPage = () => {
       setUnidades(await getUnidades(proyectoId, {
         torre_id: filtroTorre || undefined,
         etapa_id: filtroEtapa || undefined,
+        estado: filtroEstado || undefined,
       }));
     } catch { message.error('Error al cargar unidades'); }
     finally { setLoading(false); }
@@ -183,11 +186,13 @@ const InventarioPage = () => {
   // ── Unidades ───────────────────────────────────────────────
   const abrirCrearUnidad = () => {
     setModoUnidad('crear'); setUnidadEditando(null);
+    setEtapaUnidadSeleccionada('');
     formUnidad.resetFields(); setModalUnidad(true);
   };
 
   const abrirEditarUnidad = (u: Unidad) => {
     setModoUnidad('editar'); setUnidadEditando(u);
+    setEtapaUnidadSeleccionada(u.etapa_id);
     formUnidad.setFieldsValue({
       id_unidad: u.id_unidad, etapa_id: u.etapa_id,
       torre_id: u.torre_id, metraje: u.metraje, precio: u.precio,
@@ -228,8 +233,8 @@ const InventarioPage = () => {
   // ── Columnas tabla ─────────────────────────────────────────
   const columns = [
     { title: 'Unidad', dataIndex: 'id_unidad', key: 'id_unidad' },
-    { title: 'Metraje', dataIndex: 'metraje', key: 'metraje', render: (v: number) => `${v} m²` },
-    { title: 'Precio', dataIndex: 'precio', key: 'precio', render: (v: number) => `$${v?.toLocaleString()}` },
+    { title: 'Metraje', dataIndex: 'metraje', key: 'metraje', render: (v: any) => `${parseFloat(v) || 0} m²` },
+    { title: 'Precio', dataIndex: 'precio', key: 'precio', render: (v: any) => `$${parseFloat(v)?.toLocaleString() ?? '—'}` },
     {
       title: 'Estado', dataIndex: 'estado', key: 'estado',
       render: (v: string) => <Tag color={v === 'disponible' ? 'green' : 'default'}>{v}</Tag>,
@@ -332,27 +337,54 @@ const InventarioPage = () => {
       {proyectoId && (
         <>
           <div style={{ marginBottom: 16, display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
-            <Button icon={<ArrowLeftOutlined />} onClick={() => { setProyectoId(''); setFiltroEtapa(''); setFiltroTorre(''); }}>
+            <Button icon={<ArrowLeftOutlined />} onClick={() => { setProyectoId(''); setFiltroEtapa(''); setFiltroTorre(''); setFiltroEstado(''); }}>
               Proyectos
             </Button>
             <Text strong style={{ fontSize: 15 }}>
               {proyectos.find(p => p.proyecto_id === proyectoId)?.nombre}
             </Text>
             {etapas.length > 0 && (
-              <Select value={filtroEtapa || undefined} onChange={setFiltroEtapa}
+              <Select
+                value={filtroEtapa || undefined}
+                onChange={(val) => {
+                  setFiltroEtapa(val ?? '');
+                  // si la torre seleccionada no pertenece a esta etapa, limpiarla
+                  if (val && filtroTorre) {
+                    const torre = torres.find(t => t.torre_id === filtroTorre);
+                    if (torre && torre.etapa_id !== val) setFiltroTorre('');
+                  }
+                }}
                 placeholder="Todas las etapas" allowClear style={{ width: 180 }}>
                 {etapas.map(e => <Select.Option key={e.etapa_id} value={e.etapa_id}>{e.nombre}</Select.Option>)}
               </Select>
             )}
             {torres.length > 0 && (
-              <Select value={filtroTorre || undefined} onChange={setFiltroTorre}
+              <Select
+                value={filtroTorre || undefined}
+                onChange={(val) => {
+                  setFiltroTorre(val ?? '');
+                  // al seleccionar torre, sincronizar etapa automáticamente
+                  if (val) {
+                    const torre = torres.find(t => t.torre_id === val);
+                    if (torre && torre.etapa_id !== filtroEtapa) setFiltroEtapa(torre.etapa_id);
+                  }
+                }}
                 placeholder="Todas las torres" allowClear style={{ width: 180 }}>
-                {torres.map(t => <Select.Option key={t.torre_id} value={t.torre_id}>{t.nombre}</Select.Option>)}
+                {(filtroEtapa ? torres.filter(t => t.etapa_id === filtroEtapa) : torres)
+                  .map(t => <Select.Option key={t.torre_id} value={t.torre_id}>{t.nombre}</Select.Option>)}
               </Select>
             )}
+            <Select value={filtroEstado || undefined} onChange={setFiltroEstado}
+              placeholder="Todos los estados" allowClear style={{ width: 180 }}>
+              <Select.Option value="disponible">Disponible</Select.Option>
+              <Select.Option value="bloqueada">Bloqueada</Select.Option>
+              <Select.Option value="no_disponible">No disponible</Select.Option>
+              <Select.Option value="vendida">Vendida</Select.Option>
+              <Select.Option value="desvinculada">Desvinculada</Select.Option>
+            </Select>
           </div>
           <Table
-            dataSource={unidades} columns={columns} rowKey="sk"
+            dataSource={unidades} columns={columns} rowKey="unidad_id"
             loading={loading} pagination={{ pageSize: 20 }}
             locale={{ emptyText: 'No hay unidades para este proyecto' }}
           />
@@ -392,13 +424,18 @@ const InventarioPage = () => {
             <Input placeholder="Ej: A-101" />
           </Form.Item>
           <Form.Item name="etapa_id" label="Etapa" rules={[{ required: true, message: 'Requerido' }]}>
-            <Select placeholder="Selecciona una etapa">
+            <Select placeholder="Selecciona una etapa" onChange={(val) => {
+              setEtapaUnidadSeleccionada(val);
+              formUnidad.setFieldValue('torre_id', undefined);
+            }}>
               {etapas.map(e => <Select.Option key={e.etapa_id} value={e.etapa_id}>{e.nombre}</Select.Option>)}
             </Select>
           </Form.Item>
           <Form.Item name="torre_id" label="Torre" rules={[{ required: true, message: 'Requerido' }]}>
-            <Select placeholder="Selecciona una torre">
-              {torres.map(t => <Select.Option key={t.torre_id} value={t.torre_id}>{t.nombre}</Select.Option>)}
+            <Select placeholder={etapaUnidadSeleccionada ? 'Selecciona una torre' : 'Primero selecciona una etapa'} disabled={!etapaUnidadSeleccionada}>
+              {torres.filter(t => t.etapa_id === etapaUnidadSeleccionada).map(t => (
+                <Select.Option key={t.torre_id} value={t.torre_id}>{t.nombre}</Select.Option>
+              ))}
             </Select>
           </Form.Item>
           <Form.Item name="metraje" label="Metraje (m²)" rules={[{ required: true, message: 'Requerido' }]}>

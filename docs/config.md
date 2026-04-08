@@ -17,8 +17,9 @@
 - Auth: Cognito Authorizer (valida ID token)
 - Patrón: Lambda por dominio, múltiples archivos por Lambda
   - `handler.py` → solo enruta
-  - `routes/` → lógica por recurso
+  - `routes/` → lógica por recurso (un archivo por entidad)
   - `utils/` → helpers reutilizables (auth, response)
+- Límite de tamaño: cada archivo en `routes/` no debe superar ~200 líneas. Si se supera, es señal de que mezcla responsabilidades y hay que dividirlo en sub-recursos
 
 ### Autenticación
 - Amazon Cognito User Pool
@@ -64,12 +65,48 @@
 
 | Lambda | Rutas |
 |--------|-------|
-| `jam-auth` | `/auth/*` |
+| `jam-auth` | `/auth/*`, `/admin/inmobiliarias/*` |
 | `jam-proyectos` | `/proyectos/*`, `/admin/proyectos/*` |
 | `jam-captacion` | `/clientes/*` |
 | `jam-bloqueos` | `/bloqueos/*` |
 | `jam-crm` | `/crm/*`, `/notificaciones/*` |
 | `jam-reportes` | `/analytics/*`, `/reportes/*` |
+
+### Estructura de routes/ por Lambda
+
+```
+lambdas/jam-auth/
+├── handler.py
+└── routes/
+    ├── auth.py              # login, me
+    ├── inmobiliarias.py     # CRUD inmobiliaria
+    └── usuarios.py          # CRUD usuarios de inmobiliaria
+
+lambdas/jam-proyectos/
+├── handler.py
+└── routes/
+    ├── proyectos.py         # CRUD proyectos
+    ├── etapas.py            # CRUD etapas
+    ├── torres.py            # CRUD torres
+    └── unidades.py          # CRUD unidades
+
+lambdas/jam-bloqueos/
+├── handler.py
+└── routes/
+    ├── bloqueos.py          # crear, liberar, extender
+    └── historial.py         # consulta de historial
+
+lambdas/jam-captacion/
+├── handler.py
+└── routes/
+    ├── clientes.py          # registro, consulta, exclusividad
+    └── estatus.py           # cambios de estatus comercial
+
+lambdas/jam-crm/
+├── handler.py
+└── routes/
+    └── notificaciones.py    # despacho de emails y WhatsApp
+```
 
 ---
 

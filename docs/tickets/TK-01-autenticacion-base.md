@@ -7,10 +7,41 @@ e inmobiliarias, garantizando control de acceso desde el inicio.
 
 ---
 
-## Arquitectura
+## Roles del sistema
 
-```
-Admin JAM / Corredores / Inmobiliarias
+### Roles internos JAM
+
+| Rol | Descripción | MFA |
+|-----|-------------|-----|
+| `admin` | Control total: usuarios, inmobiliarias, proyectos, inventario, reportes y configuración | TOTP obligatorio |
+| `coordinador` | Gestiona inventario y proyectos (crear/editar unidades, etapas, torres), ve clientes y bloqueos. No gestiona usuarios ni inmobiliarias | TOTP obligatorio |
+| `supervisor` | Solo lectura de todo: proyectos, inventario, clientes, reportes, bloqueos. No puede crear ni modificar nada | TOTP obligatorio |
+
+### Rol externo
+
+| Rol | Descripción | MFA |
+|-----|-------------|-----|
+| `inmobiliaria` | Acceso limitado a proyectos asignados. Puede registrar clientes y bloquear unidades | Sin MFA |
+
+### Matriz de permisos por módulo
+
+| Módulo | admin | coordinador | supervisor | inmobiliaria |
+|--------|-------|-------------|------------|--------------|
+| Gestión de usuarios del sistema | ✔ | ✗ | ✗ | ✗ |
+| Gestión de inmobiliarias | ✔ | ✗ | ✗ | ✗ |
+| Proyectos (crear/editar/eliminar) | ✔ | ✔ | ✗ | ✗ |
+| Inventario (crear/editar/eliminar unidades) | ✔ | ✔ | ✗ | ✗ |
+| Ver inventario completo | ✔ | ✔ | ✔ | solo asignados |
+| Ver clientes (todos) | ✔ | ✔ | ✔ | solo propios |
+| Ver bloqueos activos | ✔ | ✔ | ✔ | solo propios |
+| Liberar / extender bloqueos | ✔ | ✗ | ✗ | ✗ |
+| Registrar clientes | ✔ | ✗ | ✗ | ✔ |
+| Bloquear unidades | ✔ | ✗ | ✗ | ✔ |
+| Reportes y analytics | ✔ | ✔ | ✔ | ✗ |
+
+---
+
+## Arquitectura
             ↓
         CloudFront
             ↓
@@ -29,7 +60,7 @@ Admin JAM / Corredores / Inmobiliarias
 ## Lo implementado
 
 ### Infraestructura (CDK)
-- Cognito User Pool `jam-user-pool` con grupos `admin` e `inmobiliaria`
+- Cognito User Pool `jam-user-pool` con grupos `admin`, `coordinador`, `supervisor` e `inmobiliaria`
 - App Client con `USER_PASSWORD_AUTH` y `USER_SRP_AUTH`
 - API Gateway REST `jam-api` con Cognito Authorizer
 - Gateway Responses con headers CORS para errores 4XX y 5XX
@@ -51,7 +82,11 @@ Admin JAM / Corredores / Inmobiliarias
 - `AuthContext` con estado global del usuario (rol, proyectos, nombre)
 - `useAuth` hook para consumir el contexto
 - `ProtectedRoute` con validación de rol
-- Login page con Ant Design
+- Login page con flujo completo: credenciales → MFA code o MFA setup → dashboard
+- Flujo MFA setup: `signIn` devuelve `CONTINUE_SIGN_IN_WITH_TOTP_SETUP` con `totpSetupDetails.sharedSecret` → QR generado en frontend → `confirmSignIn` activa MFA y completa login
+- Flujo MFA code: `signIn` devuelve `CONFIRM_SIGN_IN_WITH_TOTP_CODE` → `confirmSignIn` con código
+- Olvidé contraseña: `resetPassword` + `confirmResetPassword` directo a Cognito vía Amplify
+- Proxy Vite en desarrollo para evitar CORS con API Gateway
 - Página `/unauthorized` para accesos denegados
 - Layout responsive: sidebar fijo en desktop, drawer en móvil
 - Navbar con hamburguesa en móvil
@@ -65,19 +100,77 @@ Admin JAM / Corredores / Inmobiliarias
 | pk | sk | tipo | atributos |
 |----|----|------|-----------|
 | `INMOBILIARIA#<id>` | `METADATA` | inmobiliaria | `nombre`, `correos[]`, `proyectos[]`, `activo` |
-| `USUARIO#<cognito_sub>` | `METADATA` | usuario | `nombre`, `rol`, `inmobiliaria_id`, `activo` |
+| `USUARIO#<cognito_sub>` | `METADATA` | usuario | `nombre`, `rol`, `inmobiliaria_id`, `activo`, `correo` |
 
 GSI: `gsi-por-inmobiliaria` → pk: `inmobiliaria_id`, sk: `pk`
+
+> El campo `correo` se agrega al modelo de usuario para soportar recuperación de contraseña en usuarios de inmobiliaria.
 
 ---
 
 ## Lógica de acceso
 
-- `admin`: acceso total, ve todos los proyectos y datos
+- `admin`: acceso total, ve todos los proyectos y datos, gestiona usuarios e inmobiliarias
+- `coordinador`: gestiona inventario y proyectos, ve clientes y bloqueos, sin acceso a gestión de usuarios
+- `supervisor`: solo lectura de todo, sin capacidad de modificar nada
 - `inmobiliaria`: acceso solo a proyectos asignados en su registro de DynamoDB
-- Nombre de usuario: alias (ej: "Vendedor1", "Usuario"), no correo
+- Roles internos JAM (`admin`, `coordinador`, `supervisor`): nombre de usuario alias, MFA TOTP obligatorio
 - Deshabilitar: `activo = false` en DynamoDB + deshabilitar en Cognito (historial preservado)
 - Múltiples correos por inmobiliaria: campo `correos[]` en `INMOBILIARIA#METADATA`
+
+---
+
+## MFA
+
+### Roles internos JAM (admin, coordinador, supervisor)
+- MFA obligatorio con TOTP (Google Authenticator / Authy)
+- Al primer login, el sistema muestra el QR para configurar el autenticador y la clave secreta en texto para ingreso manual
+- Sin MFA configurado, el usuario no puede acceder al sistema
+- Flujo: `InitiateAuth` → Cognito responde `SOFTWARE_TOKEN_MFA` → frontend solicita código → `RespondToAuthChallenge`
+
+### Inmobiliaria
+- Sin MFA
+
+### Flujo de login con MFA (frontend, roles internos JAM)
+```
+login(username, password)
+  ↓
+¿Respuesta es tokens? → sesión iniciada (inmobiliaria)
+  ↓
+¿Respuesta es challenge SOFTWARE_TOKEN_MFA?
+  → mostrar campo "Código de autenticador"
+        ↓
+confirmSignIn({ challengeResponse: código })
+  ↓
+Sesión iniciada (rol interno JAM)
+```
+
+---
+
+## Recuperación de contraseña
+
+### Roles internos JAM (admin, coordinador, supervisor)
+- Sin self-service. Recuperación gestionada directamente en la consola AWS por otro admin.
+
+### Inmobiliaria
+- Self-service vía Cognito: "Olvidé mi contraseña"
+- Cognito envía código de verificación al correo registrado
+- Amplify: `resetPassword({ username })` → `confirmResetPassword({ username, confirmationCode, newPassword })`
+- Requiere `accountRecovery: EMAIL_ONLY` (ya configurado)
+
+---
+
+## Gestión de usuarios del sistema
+
+### Crear usuario interno JAM (admin, coordinador, supervisor)
+1. Admin crea usuario en Cognito con nombre alias
+2. Admin asigna el usuario al grupo correspondiente (`admin`, `coordinador` o `supervisor`)
+3. Admin crea registro en DynamoDB: `USUARIO#<sub>` con `nombre`, `rol`, `activo: true`
+4. En el primer login el usuario configura su MFA TOTP
+
+### Deshabilitar usuario interno
+- `activo = false` en DynamoDB + deshabilitar en Cognito
+- Historial preservado íntegro
 
 ---
 
@@ -85,9 +178,10 @@ GSI: `gsi-por-inmobiliaria` → pk: `inmobiliaria_id`, sk: `pk`
 
 ### Crear inmobiliaria
 1. Admin crea registro en DynamoDB: `INMOBILIARIA#<id>` con `nombre`, `correos[]`, `proyectos[]`, `activo: true`
-2. Admin crea usuario en Cognito con nombre de usuario tipo alias (ej: "VendedorXYZ")
+2. Admin crea usuario en Cognito con nombre alias + atributo `email` verificado
 3. Admin asigna el usuario al grupo `inmobiliaria` en Cognito
 4. Admin vincula el `cognito_sub` al registro de la inmobiliaria en DynamoDB
+5. El correo queda guardado también en DynamoDB (`correo` en `USUARIO#METADATA`) para referencia interna
 
 ### Deshabilitar inmobiliaria
 - `activo = false` en DynamoDB → bloquea acceso lógico
@@ -96,18 +190,44 @@ GSI: `gsi-por-inmobiliaria` → pk: `inmobiliaria_id`, sk: `pk`
 
 ---
 
+## Nuevos endpoints
+
+| Método | Ruta | Rol | Descripción |
+|--------|------|-----|-------------|
+| `POST` | `/auth/forgot-password` | público | Inicia recuperación de contraseña (inmobiliaria) |
+| `POST` | `/auth/confirm-forgot-password` | público | Confirma código y nueva contraseña |
+
+> Manejados directamente desde Amplify sin pasar por Lambda, ya que Cognito los expone nativamente.
+
+---
+
+## Cambios en infraestructura (CDK)
+
+- Cognito User Pool: grupos `coordinador` y `supervisor` nuevos además de `admin` e `inmobiliaria`
+- MFA TOTP habilitado con `mfa: cognito.Mfa.OPTIONAL` + `mfaSecondFactor: { otp: true, sms: false }`
+- `accountRecovery: EMAIL_ONLY` (ya configurado)
+- Permisos Lambda: `cognito-idp:SetUserMFAPreference`, `cognito-idp:AssociateSoftwareToken`, `cognito-idp:VerifySoftwareToken`, `cognito-idp:RespondToAuthChallenge`
+
+---
+
 ## Criterios de aceptación
 
 - [x] Login funcional para ambos roles
 - [x] Rutas protegidas no accesibles sin token válido
 - [x] El sistema diferencia correctamente `admin` e `inmobiliaria`
-- [x] Token expirado redirige al login automáticamente
+- [ ] El sistema soporta roles `coordinador` y `supervisor` con sus permisos correspondientes
+- [ ] Admin puede crear usuarios internos JAM con rol `coordinador` o `supervisor`
+- [ ] Admin puede deshabilitar usuarios internos sin perder su historial- [x] Token expirado redirige al login automáticamente
 - [x] Layout responsive (desktop y móvil)
 - [x] Base técnica lista para continuar con TK-02 y TK-03
-- [ ] Admin puede crear inmobiliarias con múltiples correos de notificación
-- [ ] Admin puede crear usuarios con nombre alias (no correo)
-- [ ] Admin puede deshabilitar una inmobiliaria sin perder su historial
-- [ ] Inmobiliarias solo ven los proyectos que les fueron asignados explícitamente
+- [x] Admin puede crear inmobiliarias con múltiples correos de notificación
+- [x] Admin puede crear usuarios con nombre alias (no correo)
+- [x] Admin puede deshabilitar una inmobiliaria sin perder su historial
+- [x] Inmobiliarias solo ven los proyectos que les fueron asignados explícitamente
+- [x] Admin tiene MFA obligatorio con TOTP al iniciar sesión
+- [x] Coordinador y supervisor tienen MFA obligatorio con TOTP al iniciar sesión
+- [x] Primer login de roles internos JAM muestra QR para configurar autenticador y clave manual
+- [x] Usuarios de inmobiliaria pueden recuperar contraseña con código al correo
 
 ---
 
@@ -117,3 +237,4 @@ GSI: `gsi-por-inmobiliaria` → pk: `inmobiliaria_id`, sk: `pk`
 - Amplify v6 usa `session.tokens.idToken` para el header `Authorization`
 - Un solo stack CDK sin sufijo de stage (`JamConstrucciones`)
 - Todos los recursos con `RemovalPolicy.RETAIN` para proteger datos en producción
+- MFA TOTP para roles internos JAM se gestiona con `AssociateSoftwareToken` + `VerifySoftwareToken` en el primer login

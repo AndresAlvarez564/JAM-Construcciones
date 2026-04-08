@@ -3,7 +3,6 @@ import { fetchAuthSession } from 'aws-amplify/auth';
 
 const API_NAME = 'JamApi';
 
-// Obtiene headers con token Cognito (Amplify lo refresca automáticamente)
 const authHeaders = async () => {
   try {
     const session = await fetchAuthSession();
@@ -16,8 +15,7 @@ const authHeaders = async () => {
 
 export const apiGet = async <T>(path: string): Promise<T> => {
   const { body } = await get({
-    apiName: API_NAME,
-    path,
+    apiName: API_NAME, path,
     options: { headers: await authHeaders() },
   }).response;
   return (await body.json()) as T;
@@ -25,26 +23,23 @@ export const apiGet = async <T>(path: string): Promise<T> => {
 
 export const apiPost = async <T>(path: string, data: unknown): Promise<T> => {
   const { body } = await post({
-    apiName: API_NAME,
-    path,
-    options: { headers: await authHeaders(), body: data as Record<string, unknown> },
+    apiName: API_NAME, path,
+    options: { headers: await authHeaders(), body: data as never },
   }).response;
   return (await body.json()) as T;
 };
 
 export const apiPut = async <T>(path: string, data: unknown): Promise<T> => {
   const { body } = await put({
-    apiName: API_NAME,
-    path,
-    options: { headers: await authHeaders(), body: data as Record<string, unknown> },
+    apiName: API_NAME, path,
+    options: { headers: await authHeaders(), body: data as never },
   }).response;
   return (await body.json()) as T;
 };
 
 export const apiDelete = async <T>(path: string): Promise<T> => {
   const { body } = await del({
-    apiName: API_NAME,
-    path,
+    apiName: API_NAME, path,
     options: { headers: await authHeaders() },
   }).response;
   return (await body.json()) as T;

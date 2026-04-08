@@ -1,11 +1,12 @@
 import json
 import uuid
-from datetime import datetime, timezone
 import boto3
 import os
+from decimal import Decimal
 from boto3.dynamodb.conditions import Key
 from botocore.exceptions import ClientError
 from utils.response import ok, created, bad_request, not_found
+from utils.helpers import now
 
 inventario = boto3.resource('dynamodb').Table(os.environ['INVENTARIO_TABLE'])
 
@@ -14,19 +15,34 @@ def listar(proyecto_id, event, rol):
     if not proyecto_id:
         return bad_request('proyecto_id requerido')
 
-    result = inventario.query(
-        KeyConditionExpression=Key('pk').eq(f'PROYECTO#{proyecto_id}') & Key('sk').begins_with('UNIDAD#')
-    )
-    items = result.get('Items', [])
-
-    # Filtros opcionales
     qs = event.get('queryStringParameters') or {}
-    if qs.get('estado'):
-        items = [i for i in items if i.get('estado') == qs['estado']]
+
+    # Usar gsi-torre si se filtra por torre_id (evita leer todas las unidades)
     if qs.get('torre_id'):
-        items = [i for i in items if i.get('torre_id') == qs['torre_id']]
-    if qs.get('etapa_id'):
-        items = [i for i in items if i.get('etapa_id') == qs['etapa_id']]
+        result = inventario.query(
+            IndexName='gsi-torre',
+            KeyConditionExpression=Key('torre_id').eq(qs['torre_id']) & Key('sk').begins_with('UNIDAD#')
+        )
+        items = [i for i in result.get('Items', []) if i.get('pk') == f'PROYECTO#{proyecto_id}' and i.get('id_unidad')]
+        if qs.get('etapa_id'):
+            items = [i for i in items if i.get('etapa_id') == qs['etapa_id']]
+        if qs.get('estado'):
+            items = [i for i in items if i.get('estado') == qs['estado']]
+    else:
+        result = inventario.query(
+            KeyConditionExpression=Key('pk').eq(f'PROYECTO#{proyecto_id}') & Key('sk').begins_with('UNIDAD#')
+        )
+        items = [i for i in result.get('Items', []) if i.get('id_unidad')]
+        if qs.get('estado'):
+            items = [i for i in items if i.get('estado') == qs['estado']]
+        if qs.get('etapa_id'):
+            items = [i for i in items if i.get('etapa_id') == qs['etapa_id']]
+
+    # Filtrar campos sensibles para rol inmobiliaria
+    if rol == 'inmobiliaria':
+        for item in items:
+            item.pop('bloqueado_por', None)
+            item.pop('cliente_id', None)
 
     return ok(items)
 
@@ -38,6 +54,10 @@ def detalle(proyecto_id, unidad_id, rol):
     item = result.get('Item')
     if not item:
         return not_found('Unidad no encontrada')
+
+    if rol == 'inmobiliaria':
+        item.pop('bloqueado_por', None)
+        item.pop('cliente_id', None)
 
     return ok(item)
 
@@ -57,14 +77,13 @@ def crear(proyecto_id, event):
     
     # Validar tipos numéricos
     try:
-        metraje = float(metraje)
-        precio = float(precio)
+        metraje = Decimal(str(metraje))
+        precio = Decimal(str(precio))
     except (ValueError, TypeError):
         return bad_request('metraje y precio deben ser numéricos')
     
     unidad_id = str(uuid.uuid4())[:8].upper()
-    now = datetime.now(timezone.utc).isoformat()
-    
+    ts = now()
     item = {
         'pk': f'PROYECTO#{proyecto_id}',
         'sk': f'UNIDAD#{unidad_id}',
@@ -75,8 +94,8 @@ def crear(proyecto_id, event):
         'metraje': metraje,
         'precio': precio,
         'estado': 'disponible',
-        'creado_en': now,
-        'actualizado_en': now,
+        'creado_en': ts,
+        'actualizado_en': ts,
     }
     
     inventario.put_item(Item=item)
@@ -106,14 +125,14 @@ def actualizar(proyecto_id, unidad_id, event):
     
     if 'metraje' in body:
         try:
-            values[':metraje'] = float(body['metraje'])
+            values[':metraje'] = Decimal(str(body['metraje']))
             updates.append('metraje = :metraje')
         except (ValueError, TypeError):
             return bad_request('metraje debe ser numérico')
     
     if 'precio' in body:
         try:
-            values[':precio'] = float(body['precio'])
+            values[':precio'] = Decimal(str(body['precio']))
             updates.append('precio = :precio')
         except (ValueError, TypeError):
             return bad_request('precio debe ser numérico')
@@ -126,7 +145,7 @@ def actualizar(proyecto_id, unidad_id, event):
         return bad_request('No hay campos para actualizar')
     
     # Siempre actualizar timestamp
-    values[':ts'] = datetime.now(timezone.utc).isoformat()
+    values[':ts'] = now()
     updates.append('actualizado_en = :ts')
     
     try:

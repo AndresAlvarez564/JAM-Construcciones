@@ -4,13 +4,13 @@ import {
   Typography, Drawer, Tooltip, Select, message,
 } from 'antd';
 import {
-  PlusOutlined, EditOutlined, StopOutlined, CheckOutlined, UserAddOutlined,
+  PlusOutlined, EditOutlined, StopOutlined, CheckOutlined, UserAddOutlined, DeleteOutlined,
 } from '@ant-design/icons';
 import {
   getInmobiliarias, crearInmobiliaria, actualizarInmobiliaria,
-  deshabilitarInmobiliaria, habilitarInmobiliaria,
+  deshabilitarInmobiliaria, habilitarInmobiliaria, eliminarInmobiliaria,
   getUsuariosInmobiliaria, crearUsuarioInmobiliaria,
-  deshabilitarUsuario, habilitarUsuario,
+  deshabilitarUsuario, habilitarUsuario, eliminarUsuarioInmobiliaria,
   type Inmobiliaria, type UsuarioInmo,
 } from '../../services/inmobiliarias.service';
 import { getProyectos } from '../../services/proyectos.service';
@@ -104,6 +104,16 @@ const InmobiliariasPage = () => {
     }
   };
 
+  const handleEliminarInmo = async (inmo: Inmobiliaria) => {
+    try {
+      await eliminarInmobiliaria(inmo.pk);
+      message.success('Inmobiliaria eliminada');
+      await cargar();
+    } catch {
+      message.error('Error al eliminar');
+    }
+  };
+
   // ── Usuarios ───────────────────────────────────────────────
 
   const abrirUsuarios = async (inmo: Inmobiliaria) => {
@@ -142,12 +152,20 @@ const InmobiliariasPage = () => {
         await habilitarUsuario(inmoSeleccionada.pk, u.pk);
         message.success('Usuario habilitado');
       }
-      // Update optimista inmediato
-      setUsuarios(prev => prev.map(x => x.pk === u.pk ? { ...x, activo: !u.activo } : x));
-      // Luego refresca desde backend
       setUsuarios(await getUsuariosInmobiliaria(inmoSeleccionada.pk));
     } catch {
       message.error('Error al cambiar estado');
+    }
+  };
+
+  const handleEliminarUsuario = async (u: UsuarioInmo) => {
+    if (!inmoSeleccionada) return;
+    try {
+      await eliminarUsuarioInmobiliaria(inmoSeleccionada.pk, u.pk);
+      message.success('Usuario eliminado');
+      setUsuarios(await getUsuariosInmobiliaria(inmoSeleccionada.pk));
+    } catch {
+      message.error('Error al eliminar');
     }
   };
 
@@ -192,12 +210,22 @@ const InmobiliariasPage = () => {
             <Button size="small" icon={<EditOutlined />} onClick={() => abrirEditar(r)} />
           </Tooltip>
           <Popconfirm
-            title={r.activo ? '¿Deshabilitar inmobiliaria?' : '¿Habilitar inmobiliaria?'}
-            okText="Sí" cancelText="No"
+            title={r.activo ? 'Deshabilitar inmobiliaria?' : 'Habilitar inmobiliaria?'}
+            okText="Si" cancelText="No"
             onConfirm={() => handleToggleInmo(r)}
           >
             <Tooltip title={r.activo ? 'Deshabilitar' : 'Habilitar'}>
               <Button size="small" danger={r.activo} icon={r.activo ? <StopOutlined /> : <CheckOutlined />} />
+            </Tooltip>
+          </Popconfirm>
+          <Popconfirm
+            title="Eliminar inmobiliaria y todos sus usuarios?"
+            okText="Si" cancelText="No"
+            okButtonProps={{ danger: true }}
+            onConfirm={() => handleEliminarInmo(r)}
+          >
+            <Tooltip title="Eliminar">
+              <Button size="small" danger icon={<DeleteOutlined />} />
             </Tooltip>
           </Popconfirm>
         </Space>
@@ -213,22 +241,34 @@ const InmobiliariasPage = () => {
       render: (v: boolean) => <Tag color={v ? 'green' : 'red'}>{v ? 'Activo' : 'Inactivo'}</Tag>,
     },
     {
-      title: '', key: 'acciones', width: 120,
+      title: '', key: 'acciones', width: 140,
       render: (_: any, u: UsuarioInmo) => (
-        <Popconfirm
-          title={u.activo ? '¿Deshabilitar usuario?' : '¿Habilitar usuario?'}
-          okText="Sí" cancelText="No"
-          onConfirm={() => handleToggleUsuario(u)}
-        >
-          <Button
-            size="small"
-            danger={u.activo}
-            type={u.activo ? 'default' : 'primary'}
-            icon={u.activo ? <StopOutlined /> : <CheckOutlined />}
+        <Space>
+          <Popconfirm
+            title={u.activo ? 'Deshabilitar usuario?' : 'Habilitar usuario?'}
+            okText="Si" cancelText="No"
+            onConfirm={() => handleToggleUsuario(u)}
           >
-            {u.activo ? 'Deshabilitar' : 'Habilitar'}
-          </Button>
-        </Popconfirm>
+            <Button
+              size="small"
+              danger={u.activo}
+              type={u.activo ? 'default' : 'primary'}
+              icon={u.activo ? <StopOutlined /> : <CheckOutlined />}
+            >
+              {u.activo ? 'Deshabilitar' : 'Habilitar'}
+            </Button>
+          </Popconfirm>
+          <Popconfirm
+            title="Eliminar usuario permanentemente?"
+            okText="Si" cancelText="No"
+            okButtonProps={{ danger: true }}
+            onConfirm={() => handleEliminarUsuario(u)}
+          >
+            <Tooltip title="Eliminar">
+              <Button size="small" danger icon={<DeleteOutlined />} />
+            </Tooltip>
+          </Popconfirm>
+        </Space>
       ),
     },
   ];
@@ -307,6 +347,12 @@ const InmobiliariasPage = () => {
           </Form.Item>
           <Form.Item name="username" label="Nombre de usuario" rules={[{ required: true, message: 'Requerido' }]}>
             <Input placeholder="Ej: VendedorXYZ (sin espacios ni correo)" />
+          </Form.Item>
+          <Form.Item
+            name="correo" label="Correo"
+            rules={[{ required: true, message: 'Requerido' }, { type: 'email', message: 'Correo invalido' }]}
+          >
+            <Input placeholder="correo@ejemplo.com" />
           </Form.Item>
           <Form.Item name="password" label="Contraseña temporal" rules={[{ required: true, message: 'Requerido' }, { min: 8, message: 'Mínimo 8 caracteres' }]}>
             <Input.Password placeholder="Mínimo 8 caracteres, 1 mayúscula, 1 número" />

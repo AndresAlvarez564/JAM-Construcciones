@@ -8,6 +8,7 @@ import DashboardPage from './pages/dashboard/DashboardPage';
 import InventarioPage from './pages/inventario/InventarioPage';
 import ClientesPage from './pages/clientes/ClientesPage';
 import InmobiliariasPage from './pages/inmobiliarias/InmobiliariasPage';
+import UsuariosSistemaPage from './pages/sistema/UsuariosSistemaPage';
 
 const App = () => (
   <BrowserRouter>
@@ -32,6 +33,14 @@ const App = () => (
             element={
               <ProtectedRoute roles={['admin']}>
                 <InmobiliariasPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="sistema/usuarios"
+            element={
+              <ProtectedRoute roles={['admin']}>
+                <UsuariosSistemaPage />
               </ProtectedRoute>
             }
           />

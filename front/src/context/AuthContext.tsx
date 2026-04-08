@@ -1,7 +1,7 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
-import { fetchAuthSession } from 'aws-amplify/auth';
 import type { Usuario } from '../types';
-import { getMe, logout as amplifyLogout } from '../services/auth.service';
+import { getMe, logout as doLogout } from '../services/auth.service';
+import { fetchAuthSession } from 'aws-amplify/auth';
 
 interface AuthContextType {
   usuario: Usuario | null;
@@ -19,8 +19,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const fetchUsuario = async () => {
     try {
       const session = await fetchAuthSession();
-      const token = session.tokens?.idToken?.toString();
-      if (!token) {
+      if (!session.tokens?.idToken) {
         setUsuario(null);
         setLoading(false);
         return;
@@ -37,7 +36,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   useEffect(() => { fetchUsuario(); }, []);
 
   return (
-    <AuthContext.Provider value={{ usuario, loading, refetch: fetchUsuario, logout: amplifyLogout }}>
+    <AuthContext.Provider value={{ usuario, loading, refetch: fetchUsuario, logout: doLogout }}>
       {children}
     </AuthContext.Provider>
   );

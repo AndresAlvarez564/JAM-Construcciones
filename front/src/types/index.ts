@@ -1,4 +1,5 @@
-export type Rol = 'admin' | 'inmobiliaria';
+export type Rol = 'admin' | 'coordinador' | 'supervisor' | 'inmobiliaria';
+export type RolInterno = 'admin' | 'coordinador' | 'supervisor';
 
 export interface Usuario {
   sub: string;

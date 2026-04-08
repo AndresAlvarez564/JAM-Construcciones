@@ -1,4 +1,4 @@
-import { apiGet, apiPost, apiPut } from './api';
+import { apiGet, apiPost, apiPut, apiDelete } from './api';
 
 export interface Inmobiliaria {
   pk: string;
@@ -36,6 +36,9 @@ export const deshabilitarInmobiliaria = (pk: string): Promise<void> =>
 export const habilitarInmobiliaria = (pk: string): Promise<void> =>
   apiPut(`/admin/inmobiliarias/${inmoId(pk)}/habilitar`, {});
 
+export const eliminarInmobiliaria = (pk: string): Promise<void> =>
+  apiDelete(`/admin/inmobiliarias/${inmoId(pk)}`);
+
 export const getUsuariosInmobiliaria = (pk: string): Promise<UsuarioInmo[]> =>
   apiGet(`/admin/inmobiliarias/${inmoId(pk)}/usuarios`);
 
@@ -47,3 +50,6 @@ export const deshabilitarUsuario = (inmoPk: string, usuarioPk: string): Promise<
 
 export const habilitarUsuario = (inmoPk: string, usuarioPk: string): Promise<void> =>
   apiPut(`/admin/inmobiliarias/${inmoId(inmoPk)}/usuarios/${usuarioId(usuarioPk)}/habilitar`, {});
+
+export const eliminarUsuarioInmobiliaria = (inmoPk: string, usuarioPk: string): Promise<void> =>
+  apiDelete(`/admin/inmobiliarias/${inmoId(inmoPk)}/usuarios/${usuarioId(usuarioPk)}`);

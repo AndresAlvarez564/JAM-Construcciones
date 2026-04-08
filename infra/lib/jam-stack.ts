@@ -26,6 +26,8 @@ export class JamStack extends cdk.Stack {
         requireDigits: true,
         requireSymbols: false,
       },
+      mfa: cognito.Mfa.OPTIONAL,
+      mfaSecondFactor: { otp: true, sms: false },
       accountRecovery: cognito.AccountRecovery.EMAIL_ONLY,
       removalPolicy: cdk.RemovalPolicy.RETAIN,
     });
@@ -44,6 +46,18 @@ export class JamStack extends cdk.Stack {
       userPoolId: userPool.userPoolId,
       groupName: 'admin',
       description: 'Administradores JAM Construcciones',
+    });
+
+    new cognito.CfnUserPoolGroup(this, 'CoordinadorGroup', {
+      userPoolId: userPool.userPoolId,
+      groupName: 'coordinador',
+      description: 'Coordinadores JAM Construcciones',
+    });
+
+    new cognito.CfnUserPoolGroup(this, 'SupervisorGroup', {
+      userPoolId: userPool.userPoolId,
+      groupName: 'supervisor',
+      description: 'Supervisores JAM Construcciones',
     });
 
     new cognito.CfnUserPoolGroup(this, 'InmobiliariaGroup', {
@@ -125,6 +139,7 @@ export class JamStack extends cdk.Stack {
     authLambda.addToRolePolicy(new iam.PolicyStatement({
       actions: [
         'cognito-idp:InitiateAuth',
+        'cognito-idp:RespondToAuthChallenge',
         'cognito-idp:AdminGetUser',
         'cognito-idp:AdminListGroupsForUser',
         'cognito-idp:AdminCreateUser',
@@ -132,6 +147,12 @@ export class JamStack extends cdk.Stack {
         'cognito-idp:AdminAddUserToGroup',
         'cognito-idp:AdminEnableUser',
         'cognito-idp:AdminDisableUser',
+        'cognito-idp:AdminDeleteUser',
+        'cognito-idp:AdminRemoveUserFromGroup',
+        'cognito-idp:AdminSetUserMFAPreference',
+        'cognito-idp:AssociateSoftwareToken',
+        'cognito-idp:VerifySoftwareToken',
+        'cognito-idp:SetUserMFAPreference',
       ],
       resources: [userPool.userPoolArn],
     }));
@@ -178,7 +199,17 @@ export class JamStack extends cdk.Stack {
     // /auth
     const authResource = api.root.addResource('auth');
     authResource.addResource('login').addMethod('POST', authLambdaIntegration);
+    authResource.addResource('confirm-mfa').addMethod('POST', authLambdaIntegration);
     authResource.addResource('me').addMethod('GET', authLambdaIntegration, {
+      authorizer: cognitoAuthorizer,
+      authorizationType: apigateway.AuthorizationType.COGNITO,
+    });
+    const mfaResource = authResource.addResource('mfa');
+    mfaResource.addResource('setup').addMethod('POST', authLambdaIntegration, {
+      authorizer: cognitoAuthorizer,
+      authorizationType: apigateway.AuthorizationType.COGNITO,
+    });
+    mfaResource.addResource('verify').addMethod('POST', authLambdaIntegration, {
       authorizer: cognitoAuthorizer,
       authorizationType: apigateway.AuthorizationType.COGNITO,
     });
@@ -227,6 +258,35 @@ export class JamStack extends cdk.Stack {
     // /admin
     const adminResource = api.root.addResource('admin');
 
+    // /admin/sistema/usuarios
+    const adminSistemaResource = adminResource.addResource('sistema');
+    const adminSistemaUsuariosResource = adminSistemaResource.addResource('usuarios');
+    adminSistemaUsuariosResource.addMethod('GET', authLambdaIntegration, {
+      authorizer: cognitoAuthorizer,
+      authorizationType: apigateway.AuthorizationType.COGNITO,
+    });
+    adminSistemaUsuariosResource.addMethod('POST', authLambdaIntegration, {
+      authorizer: cognitoAuthorizer,
+      authorizationType: apigateway.AuthorizationType.COGNITO,
+    });
+    const adminSistemaUsuarioResource = adminSistemaUsuariosResource.addResource('{usuario_id}');
+    adminSistemaUsuarioResource.addMethod('PUT', authLambdaIntegration, {
+      authorizer: cognitoAuthorizer,
+      authorizationType: apigateway.AuthorizationType.COGNITO,
+    });
+    adminSistemaUsuarioResource.addResource('deshabilitar').addMethod('PUT', authLambdaIntegration, {
+      authorizer: cognitoAuthorizer,
+      authorizationType: apigateway.AuthorizationType.COGNITO,
+    });
+    adminSistemaUsuarioResource.addResource('habilitar').addMethod('PUT', authLambdaIntegration, {
+      authorizer: cognitoAuthorizer,
+      authorizationType: apigateway.AuthorizationType.COGNITO,
+    });
+    adminSistemaUsuarioResource.addMethod('DELETE', authLambdaIntegration, {
+      authorizer: cognitoAuthorizer,
+      authorizationType: apigateway.AuthorizationType.COGNITO,
+    });
+
     // /admin/inmobiliarias
     const adminInmobiliariasResource = adminResource.addResource('inmobiliarias');
     adminInmobiliariasResource.addMethod('GET', authLambdaIntegration, {
@@ -240,6 +300,10 @@ export class JamStack extends cdk.Stack {
 
     const adminInmoResource = adminInmobiliariasResource.addResource('{inmo_id}');
     adminInmoResource.addMethod('PUT', authLambdaIntegration, {
+      authorizer: cognitoAuthorizer,
+      authorizationType: apigateway.AuthorizationType.COGNITO,
+    });
+    adminInmoResource.addMethod('DELETE', authLambdaIntegration, {
       authorizer: cognitoAuthorizer,
       authorizationType: apigateway.AuthorizationType.COGNITO,
     });
@@ -263,6 +327,10 @@ export class JamStack extends cdk.Stack {
     });
 
     const adminUsuarioResource = adminInmoUsuariosResource.addResource('{usuario_id}');
+    adminUsuarioResource.addMethod('DELETE', authLambdaIntegration, {
+      authorizer: cognitoAuthorizer,
+      authorizationType: apigateway.AuthorizationType.COGNITO,
+    });
     adminUsuarioResource.addResource('deshabilitar').addMethod('PUT', authLambdaIntegration, {
       authorizer: cognitoAuthorizer,
       authorizationType: apigateway.AuthorizationType.COGNITO,
