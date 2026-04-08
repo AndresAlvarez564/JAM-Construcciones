@@ -13,3 +13,21 @@ body {
   width: 100%;
   min-height: 100vh;
 }
+
+/* Login hero panel */
+@media (min-width: 768px) {
+  .login-hero {
+    display: flex !important;
+  }
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* Input focus */
+input:focus {
+  border-color: #2d6a4f !important;
+  background: #fff !important;
+  box-shadow: 0 0 0 3px rgba(45,106,79,0.1);
+}
