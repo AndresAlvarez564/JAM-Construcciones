@@ -19,7 +19,7 @@ import useAuth from '../../hooks/useAuth';
 const { Title, Text, Paragraph } = Typography;
 
 type ModalMode = 'crear' | 'editar';
-type Vista = 'proyectos' | 'edificios' | 'unidades';
+type Vista = 'proyectos' | 'edificios' | 'unidades' | 'unidades-proyecto';
 
 const InventarioPage = () => {
   const { usuario } = useAuth();
@@ -99,15 +99,30 @@ const InventarioPage = () => {
     finally { setLoading(false); }
   };
 
+  const cargarTodasUnidades = async (pid: string) => {
+    setLoading(true);
+    try {
+      setUnidades(await getUnidades(pid, { estado: filtroEstado || undefined }));
+    } catch { message.error('Error al cargar unidades'); }
+    finally { setLoading(false); }
+  };
+
   // ── Navegación ─────────────────────────────────────────────
   const seleccionarProyecto = (id: string) => {
     setProyectoId(id); setTorreId(''); setFiltroEstado('');
-    setVista('edificios');
+    setVista('unidades-proyecto');
+    cargarTodasUnidades(id);
   };
 
   const seleccionarEdificio = (id: string) => {
     setTorreId(id); setFiltroEstado('');
     setVista('unidades');
+  };
+
+  const verTodasUnidades = (pid: string) => {
+    setTorreId(''); setFiltroEstado('');
+    setVista('unidades-proyecto');
+    cargarTodasUnidades(pid);
   };
 
   const volverAProyectos = () => {
@@ -236,7 +251,12 @@ const InventarioPage = () => {
   };
 
   // ── Columnas tabla ─────────────────────────────────────────
-  const columns = [
+  const columnaEdificio = {
+    title: 'Edificio', dataIndex: 'torre_id', key: 'torre_id',
+    render: (v: string) => torres.find(t => t.torre_id === v)?.nombre ?? v,
+  };
+
+  const columnsBase = [
     { title: 'Unidad', dataIndex: 'id_unidad', key: 'id_unidad' },
     { title: 'Metraje', dataIndex: 'metraje', key: 'metraje', render: (v: any) => `${parseFloat(v) || 0} m²` },
     { title: 'Precio', dataIndex: 'precio', key: 'precio', render: (v: any) => `${parseFloat(v)?.toLocaleString() ?? '—'}` },
@@ -261,6 +281,10 @@ const InventarioPage = () => {
     }] : []),
   ];
 
+  const columns = vista === 'unidades-proyecto'
+    ? [columnsBase[0], columnaEdificio, ...columnsBase.slice(1)]
+    : columnsBase;
+
   const proyectoActual = proyectos.find(p => p.proyecto_id === proyectoId);
   const edificioActual = torres.find(t => t.torre_id === torreId);
 
@@ -272,6 +296,7 @@ const InventarioPage = () => {
           {vista === 'proyectos' && 'Proyectos'}
           {vista === 'edificios' && 'Edificios'}
           {vista === 'unidades' && 'Inventario'}
+          {vista === 'unidades-proyecto' && 'Inventario'}
         </Title>
         {isAdmin && (
           <Space>
@@ -290,10 +315,22 @@ const InventarioPage = () => {
                 </Button>
               </>
             )}
-            {vista === 'unidades' && (
+            {vista === 'unidades' && isAdmin && (
               <Button type="primary" icon={<PlusOutlined />} onClick={abrirCrearUnidad}>
                 Nueva unidad
               </Button>
+            )}
+            {vista === 'unidades-proyecto' && (
+              <Space>
+                <Button icon={<HomeOutlined />} onClick={volverAEdificios}>
+                  Ver por edificio
+                </Button>
+                {isAdmin && (
+                  <Button type="primary" icon={<PlusOutlined />} onClick={abrirCrearUnidad}>
+                    Nueva unidad
+                  </Button>
+                )}
+              </Space>
             )}
           </Space>
         )}
@@ -319,6 +356,14 @@ const InventarioPage = () => {
             <>
               <Text type="secondary">/</Text>
               <Text strong>{proyectoActual?.nombre}</Text>
+            </>
+          )}
+          {vista === 'unidades-proyecto' && (
+            <>
+              <Text type="secondary">/</Text>
+              <Text strong>{proyectoActual?.nombre}</Text>
+              <Text type="secondary">/</Text>
+              <Text strong>Todas las unidades</Text>
             </>
           )}
         </div>
@@ -421,11 +466,14 @@ const InventarioPage = () => {
         </Row>
       )}
 
-      {/* Vista: tabla de unidades */}
-      {vista === 'unidades' && (
+      {/* Vista: tabla de unidades (por edificio o por proyecto) */}
+      {(vista === 'unidades' || vista === 'unidades-proyecto') && (
         <>
           <div style={{ marginBottom: 16, display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
-            <Select value={filtroEstado || undefined} onChange={setFiltroEstado}
+            <Select value={filtroEstado || undefined} onChange={v => {
+              setFiltroEstado(v ?? '');
+              if (vista === 'unidades-proyecto') cargarTodasUnidades(proyectoId);
+            }}
               placeholder="Todos los estados" allowClear style={{ width: 180 }}>
               <Select.Option value="disponible">Disponible</Select.Option>
               <Select.Option value="bloqueada">Bloqueada</Select.Option>
@@ -437,7 +485,7 @@ const InventarioPage = () => {
           <Table
             dataSource={unidades} columns={columns} rowKey="unidad_id"
             loading={loading} pagination={{ pageSize: 20 }}
-            locale={{ emptyText: 'No hay unidades en este edificio' }}
+            locale={{ emptyText: 'No hay unidades' }}
           />
         </>
       )}
@@ -474,7 +522,16 @@ const InventarioPage = () => {
           <Form.Item name="id_unidad" label="ID de la unidad" rules={[{ required: true, message: 'Requerido' }]}>
             <Input placeholder="Ej: A-101" />
           </Form.Item>
-          <Form.Item name="torre_id" hidden><Input /></Form.Item>
+          <Form.Item name="torre_id" label="Edificio" rules={[{ required: true, message: 'Requerido' }]}
+            hidden={!!torreId}>
+            <Select placeholder="Selecciona edificio" disabled={!!torreId}
+              onChange={(val: string) => {
+                const etapa = torres.find(t => t.torre_id === val)?.etapa_id;
+                formUnidad.setFieldValue('etapa_id', etapa);
+              }}>
+              {torres.map(t => <Select.Option key={t.torre_id} value={t.torre_id}>{t.nombre}</Select.Option>)}
+            </Select>
+          </Form.Item>
           <Form.Item name="etapa_id" hidden><Input /></Form.Item>
           <Form.Item name="metraje" label="Metraje (m²)" rules={[{ required: true, message: 'Requerido' }]}>
             <Input type="number" placeholder="Ej: 85.5" />
