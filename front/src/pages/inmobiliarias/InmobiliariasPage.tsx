@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react';
 import {
   Table, Button, Modal, Form, Input, Tag, Space, Popconfirm,
-  Typography, Drawer, Tooltip, Select, message,
+  Typography, Drawer, Tooltip, Select, message, Card, Row, Col, Badge,
 } from 'antd';
 import {
-  PlusOutlined, EditOutlined, StopOutlined, CheckOutlined, UserAddOutlined, DeleteOutlined,
+  PlusOutlined, EditOutlined, StopOutlined, CheckOutlined,
+  DeleteOutlined, BankOutlined,
 } from '@ant-design/icons';
 import {
   getInmobiliarias, crearInmobiliaria, actualizarInmobiliaria,
@@ -39,9 +40,7 @@ const InmobiliariasPage = () => {
   const [modalUsuario, setModalUsuario] = useState(false);
   const [formUsuario] = Form.useForm();
 
-  useEffect(() => {
-    cargar();
-  }, []);
+  useEffect(() => { cargar(); }, []);
 
   const cargar = async () => {
     setLoading(true);
@@ -63,70 +62,51 @@ const InmobiliariasPage = () => {
     formInmo.resetFields(); setModalInmo(true);
   };
 
-  const abrirEditar = (inmo: Inmobiliaria) => {
+  const abrirEditar = (inmo: Inmobiliaria, e: React.MouseEvent) => {
+    e.stopPropagation();
     setModoInmo('editar'); setInmoEditando(inmo);
-    formInmo.setFieldsValue({
-      nombre: inmo.nombre,
-      correos: inmo.correos,
-      proyectos: inmo.proyectos,
-    });
+    formInmo.setFieldsValue({ nombre: inmo.nombre, correos: inmo.correos, proyectos: inmo.proyectos });
     setModalInmo(true);
   };
 
   const handleGuardarInmo = async (values: { nombre: string; correos: string[]; proyectos: string[] }) => {
     try {
       if (modoInmo === 'crear') {
-        await crearInmobiliaria(values);
-        message.success('Inmobiliaria creada');
+        await crearInmobiliaria(values); message.success('Inmobiliaria creada');
       } else if (inmoEditando) {
-        await actualizarInmobiliaria(inmoEditando.pk, values);
-        message.success('Inmobiliaria actualizada');
+        await actualizarInmobiliaria(inmoEditando.pk, values); message.success('Inmobiliaria actualizada');
       }
-      setModalInmo(false);
-      await cargar();
-    } catch {
-      message.error('Error al guardar');
-    }
+      setModalInmo(false); await cargar();
+    } catch { message.error('Error al guardar'); }
   };
 
-  const handleToggleInmo = async (inmo: Inmobiliaria) => {
+  const handleToggleInmo = async (inmo: Inmobiliaria, e: React.MouseEvent) => {
+    e.stopPropagation();
     try {
       if (inmo.activo) {
-        await deshabilitarInmobiliaria(inmo.pk);
-        message.success('Inmobiliaria deshabilitada');
+        await deshabilitarInmobiliaria(inmo.pk); message.success('Inmobiliaria deshabilitada');
       } else {
-        await habilitarInmobiliaria(inmo.pk);
-        message.success('Inmobiliaria habilitada');
+        await habilitarInmobiliaria(inmo.pk); message.success('Inmobiliaria habilitada');
       }
       await cargar();
-    } catch {
-      message.error('Error al cambiar estado');
-    }
+    } catch { message.error('Error al cambiar estado'); }
   };
 
   const handleEliminarInmo = async (inmo: Inmobiliaria) => {
     try {
-      await eliminarInmobiliaria(inmo.pk);
-      message.success('Inmobiliaria eliminada');
+      await eliminarInmobiliaria(inmo.pk); message.success('Inmobiliaria eliminada');
       await cargar();
-    } catch {
-      message.error('Error al eliminar');
-    }
+    } catch { message.error('Error al eliminar'); }
   };
 
   // ── Usuarios ───────────────────────────────────────────────
 
   const abrirUsuarios = async (inmo: Inmobiliaria) => {
-    setInmoSeleccionada(inmo);
-    setDrawerOpen(true);
-    setLoadingUsuarios(true);
+    setInmoSeleccionada(inmo); setDrawerOpen(true); setLoadingUsuarios(true);
     try {
       setUsuarios(await getUsuariosInmobiliaria(inmo.pk));
-    } catch {
-      message.error('Error al cargar usuarios');
-    } finally {
-      setLoadingUsuarios(false);
-    }
+    } catch { message.error('Error al cargar usuarios'); }
+    finally { setLoadingUsuarios(false); }
   };
 
   const handleCrearUsuario = async (values: { username: string; password: string; nombre?: string }) => {
@@ -134,104 +114,30 @@ const InmobiliariasPage = () => {
     try {
       await crearUsuarioInmobiliaria(inmoSeleccionada.pk, values);
       message.success('Usuario creado');
-      setModalUsuario(false);
-      formUsuario.resetFields();
+      setModalUsuario(false); formUsuario.resetFields();
       setUsuarios(await getUsuariosInmobiliaria(inmoSeleccionada.pk));
-    } catch {
-      message.error('Error al crear usuario');
-    }
+    } catch { message.error('Error al crear usuario'); }
   };
 
   const handleToggleUsuario = async (u: UsuarioInmo) => {
     if (!inmoSeleccionada) return;
     try {
       if (u.activo) {
-        await deshabilitarUsuario(inmoSeleccionada.pk, u.pk);
-        message.success('Usuario deshabilitado');
+        await deshabilitarUsuario(inmoSeleccionada.pk, u.pk); message.success('Usuario deshabilitado');
       } else {
-        await habilitarUsuario(inmoSeleccionada.pk, u.pk);
-        message.success('Usuario habilitado');
+        await habilitarUsuario(inmoSeleccionada.pk, u.pk); message.success('Usuario habilitado');
       }
       setUsuarios(await getUsuariosInmobiliaria(inmoSeleccionada.pk));
-    } catch {
-      message.error('Error al cambiar estado');
-    }
+    } catch { message.error('Error al cambiar estado'); }
   };
 
   const handleEliminarUsuario = async (u: UsuarioInmo) => {
     if (!inmoSeleccionada) return;
     try {
-      await eliminarUsuarioInmobiliaria(inmoSeleccionada.pk, u.pk);
-      message.success('Usuario eliminado');
+      await eliminarUsuarioInmobiliaria(inmoSeleccionada.pk, u.pk); message.success('Usuario eliminado');
       setUsuarios(await getUsuariosInmobiliaria(inmoSeleccionada.pk));
-    } catch {
-      message.error('Error al eliminar');
-    }
+    } catch { message.error('Error al eliminar'); }
   };
-
-  // ── Columnas ───────────────────────────────────────────────
-
-  const columns = [
-    {
-      title: 'Nombre', dataIndex: 'nombre', key: 'nombre',
-      render: (v: string, r: Inmobiliaria) => (
-        <Space direction="vertical" size={0}>
-          <Text strong>{v}</Text>
-          <Text type="secondary" style={{ fontSize: 12 }}>
-            {r.correos?.join(', ') || '—'}
-          </Text>
-        </Space>
-      ),
-    },
-    {
-      title: 'Proyectos', dataIndex: 'proyectos', key: 'proyectos',
-      render: (ids: string[]) => (
-        <Space wrap>
-          {ids?.map(id => {
-            const p = proyectos.find(p => p.proyecto_id === id);
-            return <Tag key={id}>{p?.nombre || id}</Tag>;
-          })}
-          {(!ids || ids.length === 0) && <Text type="secondary">—</Text>}
-        </Space>
-      ),
-    },
-    {
-      title: 'Estado', dataIndex: 'activo', key: 'activo',
-      render: (v: boolean) => <Tag color={v ? 'green' : 'red'}>{v ? 'Activa' : 'Inactiva'}</Tag>,
-    },
-    {
-      title: '', key: 'acciones', width: 120,
-      render: (_: any, r: Inmobiliaria) => (
-        <Space>
-          <Tooltip title="Usuarios">
-            <Button size="small" icon={<UserAddOutlined />} onClick={() => abrirUsuarios(r)} />
-          </Tooltip>
-          <Tooltip title="Editar">
-            <Button size="small" icon={<EditOutlined />} onClick={() => abrirEditar(r)} />
-          </Tooltip>
-          <Popconfirm
-            title={r.activo ? 'Deshabilitar inmobiliaria?' : 'Habilitar inmobiliaria?'}
-            okText="Si" cancelText="No"
-            onConfirm={() => handleToggleInmo(r)}
-          >
-            <Tooltip title={r.activo ? 'Deshabilitar' : 'Habilitar'}>
-              <Button size="small" danger={r.activo} icon={r.activo ? <StopOutlined /> : <CheckOutlined />} />
-            </Tooltip>
-          </Popconfirm>
-          <Popconfirm
-            title="Eliminar inmobiliaria y todos sus usuarios?"
-            okText="Si" cancelText="No"
-            okButtonProps={{ danger: true }}
-            onConfirm={() => handleEliminarInmo(r)}
-          >
-            <Tooltip title="Eliminar">
-              <Button size="small" danger icon={<DeleteOutlined />} />
-            </Tooltip>
-          </Popconfirm>
-        </Space>
-      ),
-    },
-  ];
 
   const columnsUsuarios = [
     { title: 'Usuario', dataIndex: 'cognito_username', key: 'cognito_username' },
@@ -245,25 +151,17 @@ const InmobiliariasPage = () => {
       render: (_: any, u: UsuarioInmo) => (
         <Space>
           <Popconfirm
-            title={u.activo ? 'Deshabilitar usuario?' : 'Habilitar usuario?'}
-            okText="Si" cancelText="No"
+            title={u.activo ? '¿Deshabilitar usuario?' : '¿Habilitar usuario?'}
+            okText="Sí" cancelText="No"
             onConfirm={() => handleToggleUsuario(u)}
           >
-            <Button
-              size="small"
-              danger={u.activo}
-              type={u.activo ? 'default' : 'primary'}
-              icon={u.activo ? <StopOutlined /> : <CheckOutlined />}
-            >
+            <Button size="small" danger={u.activo} type={u.activo ? 'default' : 'primary'}
+              icon={u.activo ? <StopOutlined /> : <CheckOutlined />}>
               {u.activo ? 'Deshabilitar' : 'Habilitar'}
             </Button>
           </Popconfirm>
-          <Popconfirm
-            title="Eliminar usuario permanentemente?"
-            okText="Si" cancelText="No"
-            okButtonProps={{ danger: true }}
-            onConfirm={() => handleEliminarUsuario(u)}
-          >
+          <Popconfirm title="¿Eliminar usuario?" okText="Sí" cancelText="No" okButtonProps={{ danger: true }}
+            onConfirm={() => handleEliminarUsuario(u)}>
             <Tooltip title="Eliminar">
               <Button size="small" danger icon={<DeleteOutlined />} />
             </Tooltip>
@@ -282,10 +180,62 @@ const InmobiliariasPage = () => {
         </Button>
       </div>
 
-      <Table
-        dataSource={inmobiliarias} columns={columns}
-        rowKey="pk" loading={loading} pagination={{ pageSize: 20 }}
-      />
+      {/* Cards */}
+      <Row gutter={[16, 16]}>
+        {inmobiliarias.map(inmo => (
+          <Col key={inmo.pk} xs={24} sm={12} md={8} lg={6}>
+            <Card
+              hoverable
+              onClick={() => abrirUsuarios(inmo)}
+              styles={{ body: { padding: 20 } }}
+              style={{ borderRadius: 10, opacity: inmo.activo ? 1 : 0.6 }}
+            >
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start', flex: 1, minWidth: 0 }}>
+                  <BankOutlined style={{ fontSize: 26, color: inmo.activo ? '#1677ff' : '#aaa', flexShrink: 0, marginTop: 2 }} />
+                  <div style={{ minWidth: 0 }}>
+                    <Text strong style={{ fontSize: 15 }}>{inmo.nombre}</Text>
+                    <div style={{ marginTop: 4 }}>
+                      <Badge status={inmo.activo ? 'success' : 'error'} text={inmo.activo ? 'Activa' : 'Inactiva'} />
+                    </div>
+                    {inmo.proyectos?.length > 0 && (
+                      <div style={{ marginTop: 6, display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                        {inmo.proyectos.map(id => {
+                          const p = proyectos.find(p => p.proyecto_id === id);
+                          return <Tag key={id} style={{ margin: 0 }}>{p?.nombre || id}</Tag>;
+                        })}
+                      </div>
+                    )}
+                  </div>
+                </div>
+                <Space style={{ flexShrink: 0, marginLeft: 8 }} onClick={e => e.stopPropagation()}>
+                  <Tooltip title="Editar">
+                    <Button size="small" icon={<EditOutlined />} onClick={(e) => abrirEditar(inmo, e)} />
+                  </Tooltip>
+                  <Popconfirm
+                    title={inmo.activo ? '¿Deshabilitar inmobiliaria?' : '¿Habilitar inmobiliaria?'}
+                    okText="Sí" cancelText="No"
+                    onConfirm={(e) => handleToggleInmo(inmo, e as any)}
+                  >
+                    <Tooltip title={inmo.activo ? 'Deshabilitar' : 'Habilitar'}>
+                      <Button size="small" danger={inmo.activo} icon={inmo.activo ? <StopOutlined /> : <CheckOutlined />} />
+                    </Tooltip>
+                  </Popconfirm>
+                  <Popconfirm title="¿Eliminar inmobiliaria?" okText="Sí" cancelText="No" okButtonProps={{ danger: true }}
+                    onConfirm={() => handleEliminarInmo(inmo)}>
+                    <Tooltip title="Eliminar">
+                      <Button size="small" danger icon={<DeleteOutlined />} />
+                    </Tooltip>
+                  </Popconfirm>
+                </Space>
+              </div>
+            </Card>
+          </Col>
+        ))}
+        {!loading && inmobiliarias.length === 0 && (
+          <Col span={24}><Text type="secondary">No hay inmobiliarias registradas.</Text></Col>
+        )}
+      </Row>
 
       {/* Modal inmobiliaria */}
       <Modal
@@ -348,13 +298,12 @@ const InmobiliariasPage = () => {
           <Form.Item name="username" label="Nombre de usuario" rules={[{ required: true, message: 'Requerido' }]}>
             <Input placeholder="Ej: VendedorXYZ (sin espacios ni correo)" />
           </Form.Item>
-          <Form.Item
-            name="correo" label="Correo"
-            rules={[{ required: true, message: 'Requerido' }, { type: 'email', message: 'Correo invalido' }]}
-          >
+          <Form.Item name="correo" label="Correo"
+            rules={[{ required: true, message: 'Requerido' }, { type: 'email', message: 'Correo inválido' }]}>
             <Input placeholder="correo@ejemplo.com" />
           </Form.Item>
-          <Form.Item name="password" label="Contraseña temporal" rules={[{ required: true, message: 'Requerido' }, { min: 8, message: 'Mínimo 8 caracteres' }]}>
+          <Form.Item name="password" label="Contraseña temporal"
+            rules={[{ required: true, message: 'Requerido' }, { min: 8, message: 'Mínimo 8 caracteres' }]}>
             <Input.Password placeholder="Mínimo 8 caracteres, 1 mayúscula, 1 número" />
           </Form.Item>
         </Form>

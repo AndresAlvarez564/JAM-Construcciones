@@ -1,11 +1,11 @@
 import { useEffect, useState } from 'react';
 import {
   Table, Typography, Tag, Button, Modal, Form, Input, message,
-  Select, Card, Row, Col, Popconfirm, Drawer, Space, Divider, Tooltip,
+  Select, Card, Row, Col, Popconfirm, Drawer, Space, Tooltip,
 } from 'antd';
 import {
-  PlusOutlined, ArrowLeftOutlined, AppstoreOutlined,
-  EditOutlined, DeleteOutlined, SettingOutlined,
+  PlusOutlined, AppstoreOutlined,
+  EditOutlined, DeleteOutlined, SettingOutlined, HomeOutlined,
 } from '@ant-design/icons';
 import {
   getProyectos, getUnidades, crearProyecto, actualizarProyecto, eliminarProyecto,
@@ -19,6 +19,7 @@ import useAuth from '../../hooks/useAuth';
 const { Title, Text, Paragraph } = Typography;
 
 type ModalMode = 'crear' | 'editar';
+type Vista = 'proyectos' | 'edificios' | 'unidades';
 
 const InventarioPage = () => {
   const { usuario } = useAuth();
@@ -31,9 +32,9 @@ const InventarioPage = () => {
   const [torres, setTorres] = useState<Torre[]>([]);
 
   // navegación
+  const [vista, setVista] = useState<Vista>('proyectos');
   const [proyectoId, setProyectoId] = useState('');
-  const [filtroTorre, setFiltroTorre] = useState('');
-  const [filtroEtapa, setFiltroEtapa] = useState('');
+  const [torreId, setTorreId] = useState('');
   const [filtroEstado, setFiltroEstado] = useState('');
   const [loading, setLoading] = useState(false);
 
@@ -49,27 +50,29 @@ const InventarioPage = () => {
   const [unidadEditando, setUnidadEditando] = useState<Unidad | null>(null);
   const [formUnidad] = Form.useForm();
 
-  // drawer etapas/torres
+  // drawer etapas/edificios
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [modalEdificio, setModalEdificio] = useState(false);
   const [formEtapa] = Form.useForm();
   const [formTorre] = Form.useForm();
   const [etapaEditando, setEtapaEditando] = useState<Etapa | null>(null);
   const [torreEditando, setTorreEditando] = useState<Torre | null>(null);
-  const [etapaUnidadSeleccionada, setEtapaUnidadSeleccionada] = useState<string>('');
 
   useEffect(() => { cargarProyectos(); }, []);
 
   useEffect(() => {
-    if (proyectoId) { cargarEtapasYTorres(); cargarUnidades(); }
-    else { setUnidades([]); setEtapas([]); setTorres([]); }
+    if (proyectoId) cargarEtapasYTorres();
+    else { setEtapas([]); setTorres([]); }
   }, [proyectoId]);
 
-  useEffect(() => { if (proyectoId) cargarUnidades(); }, [filtroTorre, filtroEtapa, filtroEstado]);
+  useEffect(() => {
+    if (torreId) cargarUnidades();
+    else setUnidades([]);
+  }, [torreId, filtroEstado]);
 
   const cargarProyectos = async () => {
     try {
       const todos = await getProyectos();
-      // Inmobiliarias solo ven sus proyectos asignados
       if (usuario?.rol === 'inmobiliaria' && usuario.proyectos?.length) {
         setProyectos(todos.filter(p => usuario.proyectos!.includes(p.proyecto_id)));
       } else {
@@ -82,19 +85,39 @@ const InventarioPage = () => {
     try {
       const [e, t] = await Promise.all([getEtapas(proyectoId), getTorres(proyectoId)]);
       setEtapas(e); setTorres(t);
-    } catch { console.error('Error al cargar etapas/torres'); }
+    } catch { console.error('Error al cargar etapas/edificios'); }
   };
 
   const cargarUnidades = async () => {
     setLoading(true);
     try {
       setUnidades(await getUnidades(proyectoId, {
-        torre_id: filtroTorre || undefined,
-        etapa_id: filtroEtapa || undefined,
+        torre_id: torreId || undefined,
         estado: filtroEstado || undefined,
       }));
     } catch { message.error('Error al cargar unidades'); }
     finally { setLoading(false); }
+  };
+
+  // ── Navegación ─────────────────────────────────────────────
+  const seleccionarProyecto = (id: string) => {
+    setProyectoId(id); setTorreId(''); setFiltroEstado('');
+    setVista('edificios');
+  };
+
+  const seleccionarEdificio = (id: string) => {
+    setTorreId(id); setFiltroEstado('');
+    setVista('unidades');
+  };
+
+  const volverAProyectos = () => {
+    setProyectoId(''); setTorreId(''); setFiltroEstado('');
+    setVista('proyectos');
+  };
+
+  const volverAEdificios = () => {
+    setTorreId(''); setFiltroEstado('');
+    setVista('edificios');
   };
 
   // ── Proyectos ──────────────────────────────────────────────
@@ -113,22 +136,18 @@ const InventarioPage = () => {
   const handleGuardarProyecto = async (values: { nombre: string; descripcion?: string }) => {
     try {
       if (modoProyecto === 'crear') {
-        await crearProyecto(values);
-        message.success('Proyecto creado');
+        await crearProyecto(values); message.success('Proyecto creado');
       } else if (proyectoEditando) {
-        await actualizarProyecto(proyectoEditando.proyecto_id, values);
-        message.success('Proyecto actualizado');
+        await actualizarProyecto(proyectoEditando.proyecto_id, values); message.success('Proyecto actualizado');
       }
-      await cargarProyectos();
-      setModalProyecto(false);
+      await cargarProyectos(); setModalProyecto(false);
     } catch { message.error('Error al guardar proyecto'); }
   };
 
   const handleEliminarProyecto = async (p: Proyecto, e?: React.MouseEvent) => {
     e?.stopPropagation();
     try {
-      await eliminarProyecto(p.proyecto_id);
-      message.success('Proyecto eliminado');
+      await eliminarProyecto(p.proyecto_id); message.success('Proyecto eliminado');
       await cargarProyectos();
     } catch { message.error('Error al eliminar proyecto'); }
   };
@@ -137,62 +156,50 @@ const InventarioPage = () => {
   const handleGuardarEtapa = async (values: { nombre: string; orden?: number }) => {
     try {
       if (etapaEditando) {
-        await actualizarEtapa(proyectoId, etapaEditando.etapa_id, values);
-        message.success('Etapa actualizada');
+        await actualizarEtapa(proyectoId, etapaEditando.etapa_id, values); message.success('Etapa actualizada');
       } else {
-        await crearEtapa(proyectoId, values);
-        message.success('Etapa creada');
+        await crearEtapa(proyectoId, values); message.success('Etapa creada');
       }
-      setEtapaEditando(null); formEtapa.resetFields();
-      await cargarEtapasYTorres();
+      setEtapaEditando(null); formEtapa.resetFields(); await cargarEtapasYTorres();
     } catch { message.error('Error al guardar etapa'); }
   };
 
   const handleEliminarEtapa = async (etapa: Etapa) => {
     try {
-      await eliminarEtapa(proyectoId, etapa.etapa_id);
-      message.success('Etapa eliminada');
+      await eliminarEtapa(proyectoId, etapa.etapa_id); message.success('Etapa eliminada');
       await cargarEtapasYTorres();
-    } catch (err: any) {
-      message.error(err?.message || 'Error al eliminar etapa');
-    }
+    } catch (err: any) { message.error(err?.message || 'Error al eliminar etapa'); }
   };
 
-  // ── Torres ─────────────────────────────────────────────────
+  // ── Edificios ──────────────────────────────────────────────
   const handleGuardarTorre = async (values: { nombre: string; etapa_id: string; orden?: number }) => {
     try {
       if (torreEditando) {
-        await actualizarTorre(proyectoId, torreEditando.torre_id, values);
-        message.success('Torre actualizada');
+        await actualizarTorre(proyectoId, torreEditando.torre_id, values); message.success('Edificio actualizado');
       } else {
-        await crearTorre(proyectoId, values);
-        message.success('Torre creada');
+        await crearTorre(proyectoId, values); message.success('Edificio creado');
       }
-      setTorreEditando(null); formTorre.resetFields();
-      await cargarEtapasYTorres();
-    } catch { message.error('Error al guardar torre'); }
+      setTorreEditando(null); formTorre.resetFields(); await cargarEtapasYTorres();
+    } catch { message.error('Error al guardar edificio'); }
   };
 
   const handleEliminarTorre = async (torre: Torre) => {
     try {
-      await eliminarTorre(proyectoId, torre.torre_id);
-      message.success('Torre eliminada');
+      await eliminarTorre(proyectoId, torre.torre_id); message.success('Edificio eliminado');
       await cargarEtapasYTorres();
-    } catch (err: any) {
-      message.error(err?.message || 'Error al eliminar torre');
-    }
+    } catch (err: any) { message.error(err?.message || 'Error al eliminar edificio'); }
   };
 
   // ── Unidades ───────────────────────────────────────────────
   const abrirCrearUnidad = () => {
     setModoUnidad('crear'); setUnidadEditando(null);
-    setEtapaUnidadSeleccionada('');
-    formUnidad.resetFields(); setModalUnidad(true);
+    formUnidad.resetFields();
+    formUnidad.setFieldsValue({ torre_id: torreId, etapa_id: torres.find(t => t.torre_id === torreId)?.etapa_id });
+    setModalUnidad(true);
   };
 
   const abrirEditarUnidad = (u: Unidad) => {
     setModoUnidad('editar'); setUnidadEditando(u);
-    setEtapaUnidadSeleccionada(u.etapa_id);
     formUnidad.setFieldsValue({
       id_unidad: u.id_unidad, etapa_id: u.etapa_id,
       torre_id: u.torre_id, metraje: u.metraje, precio: u.precio,
@@ -217,15 +224,13 @@ const InventarioPage = () => {
         });
         message.success('Unidad actualizada');
       }
-      await cargarUnidades();
-      setModalUnidad(false);
+      await cargarUnidades(); setModalUnidad(false);
     } catch { message.error('Error al guardar unidad'); }
   };
 
   const handleEliminarUnidad = async (u: Unidad) => {
     try {
-      await eliminarUnidad(proyectoId, u.unidad_id);
-      message.success('Unidad eliminada');
+      await eliminarUnidad(proyectoId, u.unidad_id); message.success('Unidad eliminada');
       await cargarUnidades();
     } catch { message.error('Error al eliminar unidad'); }
   };
@@ -234,7 +239,7 @@ const InventarioPage = () => {
   const columns = [
     { title: 'Unidad', dataIndex: 'id_unidad', key: 'id_unidad' },
     { title: 'Metraje', dataIndex: 'metraje', key: 'metraje', render: (v: any) => `${parseFloat(v) || 0} m²` },
-    { title: 'Precio', dataIndex: 'precio', key: 'precio', render: (v: any) => `$${parseFloat(v)?.toLocaleString() ?? '—'}` },
+    { title: 'Precio', dataIndex: 'precio', key: 'precio', render: (v: any) => `${parseFloat(v)?.toLocaleString() ?? '—'}` },
     {
       title: 'Estado', dataIndex: 'estado', key: 'estado',
       render: (v: string) => <Tag color={v === 'disponible' ? 'green' : 'default'}>{v}</Tag>,
@@ -256,40 +261,77 @@ const InventarioPage = () => {
     }] : []),
   ];
 
+  const proyectoActual = proyectos.find(p => p.proyecto_id === proyectoId);
+  const edificioActual = torres.find(t => t.torre_id === torreId);
+
   return (
     <div style={{ padding: 24 }}>
       {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
-        <Title level={2} style={{ margin: 0 }}>{proyectoId ? 'Inventario' : 'Proyectos'}</Title>
+        <Title level={2} style={{ margin: 0 }}>
+          {vista === 'proyectos' && 'Proyectos'}
+          {vista === 'edificios' && 'Edificios'}
+          {vista === 'unidades' && 'Inventario'}
+        </Title>
         {isAdmin && (
           <Space>
-            {!proyectoId && (
+            {vista === 'proyectos' && (
               <Button type="primary" icon={<PlusOutlined />} onClick={abrirCrearProyecto}>
                 Nuevo proyecto
               </Button>
             )}
-            {proyectoId && (
+            {vista === 'edificios' && (
               <>
                 <Button icon={<SettingOutlined />} onClick={() => setDrawerOpen(true)}>
-                  Etapas y torres
+                  Etapas
                 </Button>
-                <Button type="primary" icon={<PlusOutlined />} onClick={abrirCrearUnidad}>
-                  Nueva unidad
+                <Button type="primary" icon={<PlusOutlined />} onClick={() => { setTorreEditando(null); formTorre.resetFields(); setModalEdificio(true); }}>
+                  Nuevo edificio
                 </Button>
               </>
+            )}
+            {vista === 'unidades' && (
+              <Button type="primary" icon={<PlusOutlined />} onClick={abrirCrearUnidad}>
+                Nueva unidad
+              </Button>
             )}
           </Space>
         )}
       </div>
 
+      {/* Breadcrumb */}
+      {vista !== 'proyectos' && (
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 16, flexWrap: 'wrap' }}>
+          <Button size="small" type="link" icon={<HomeOutlined />} onClick={volverAProyectos} style={{ padding: 0 }}>
+            Proyectos
+          </Button>
+          {vista === 'unidades' && (
+            <>
+              <Text type="secondary">/</Text>
+              <Button size="small" type="link" onClick={volverAEdificios} style={{ padding: 0 }}>
+                {proyectoActual?.nombre}
+              </Button>
+              <Text type="secondary">/</Text>
+              <Text strong>{edificioActual?.nombre}</Text>
+            </>
+          )}
+          {vista === 'edificios' && (
+            <>
+              <Text type="secondary">/</Text>
+              <Text strong>{proyectoActual?.nombre}</Text>
+            </>
+          )}
+        </div>
+      )}
+
       {/* Vista: cards de proyectos */}
-      {!proyectoId && (
+      {vista === 'proyectos' && (
         <Row gutter={[16, 16]}>
           {proyectos.map(p => (
             <Col key={p.proyecto_id} xs={24} sm={12} md={8} lg={6}>
               <Card
                 hoverable
-                onClick={() => setProyectoId(p.proyecto_id)}
+                onClick={() => seleccionarProyecto(p.proyecto_id)}
                 styles={{ body: { padding: 20 } }}
                 style={{ borderRadius: 10 }}
               >
@@ -326,54 +368,63 @@ const InventarioPage = () => {
             </Col>
           ))}
           {proyectos.length === 0 && (
-            <Col span={24}>
-              <Text type="secondary">No hay proyectos disponibles.</Text>
-            </Col>
+            <Col span={24}><Text type="secondary">No hay proyectos disponibles.</Text></Col>
           )}
         </Row>
       )}
 
-      {/* Vista: inventario */}
-      {proyectoId && (
+      {/* Vista: cards de edificios */}
+      {vista === 'edificios' && (
+        <Row gutter={[16, 16]}>
+          {torres.map(t => {
+            const etapa = etapas.find(e => e.etapa_id === t.etapa_id);
+            return (
+              <Col key={t.torre_id} xs={24} sm={12} md={8} lg={6}>
+                <Card
+                  hoverable
+                  onClick={() => seleccionarEdificio(t.torre_id)}
+                  styles={{ body: { padding: 20 } }}
+                  style={{ borderRadius: 10 }}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                    <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
+                      <HomeOutlined style={{ fontSize: 26, color: '#1677ff', flexShrink: 0, marginTop: 2 }} />
+                      <div>
+                        <Text strong style={{ fontSize: 15 }}>{t.nombre}</Text>
+                        {etapa && (
+                          <div style={{ marginTop: 6 }}>
+                            <Tag color="blue">{etapa.nombre}</Tag>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                    {isAdmin && (
+                      <Space style={{ flexShrink: 0, marginLeft: 8 }} onClick={e => e.stopPropagation()}>
+                        <Tooltip title="Editar">
+                          <Button size="small" icon={<EditOutlined />} onClick={(e) => { e.stopPropagation(); setTorreEditando(t); formTorre.setFieldsValue({ nombre: t.nombre, etapa_id: t.etapa_id }); setModalEdificio(true); }} />
+                        </Tooltip>
+                        <Popconfirm title="¿Eliminar edificio?" okText="Sí" cancelText="No" onConfirm={() => handleEliminarTorre(t)}>
+                          <Tooltip title="Eliminar">
+                            <Button size="small" danger icon={<DeleteOutlined />} />
+                          </Tooltip>
+                        </Popconfirm>
+                      </Space>
+                    )}
+                  </div>
+                </Card>
+              </Col>
+            );
+          })}
+          {torres.length === 0 && (
+            <Col span={24}><Text type="secondary">No hay edificios en este proyecto.</Text></Col>
+          )}
+        </Row>
+      )}
+
+      {/* Vista: tabla de unidades */}
+      {vista === 'unidades' && (
         <>
           <div style={{ marginBottom: 16, display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
-            <Button icon={<ArrowLeftOutlined />} onClick={() => { setProyectoId(''); setFiltroEtapa(''); setFiltroTorre(''); setFiltroEstado(''); }}>
-              Proyectos
-            </Button>
-            <Text strong style={{ fontSize: 15 }}>
-              {proyectos.find(p => p.proyecto_id === proyectoId)?.nombre}
-            </Text>
-            {etapas.length > 0 && (
-              <Select
-                value={filtroEtapa || undefined}
-                onChange={(val) => {
-                  setFiltroEtapa(val ?? '');
-                  // si la torre seleccionada no pertenece a esta etapa, limpiarla
-                  if (val && filtroTorre) {
-                    const torre = torres.find(t => t.torre_id === filtroTorre);
-                    if (torre && torre.etapa_id !== val) setFiltroTorre('');
-                  }
-                }}
-                placeholder="Todas las etapas" allowClear style={{ width: 180 }}>
-                {etapas.map(e => <Select.Option key={e.etapa_id} value={e.etapa_id}>{e.nombre}</Select.Option>)}
-              </Select>
-            )}
-            {torres.length > 0 && (
-              <Select
-                value={filtroTorre || undefined}
-                onChange={(val) => {
-                  setFiltroTorre(val ?? '');
-                  // al seleccionar torre, sincronizar etapa automáticamente
-                  if (val) {
-                    const torre = torres.find(t => t.torre_id === val);
-                    if (torre && torre.etapa_id !== filtroEtapa) setFiltroEtapa(torre.etapa_id);
-                  }
-                }}
-                placeholder="Todas las torres" allowClear style={{ width: 180 }}>
-                {(filtroEtapa ? torres.filter(t => t.etapa_id === filtroEtapa) : torres)
-                  .map(t => <Select.Option key={t.torre_id} value={t.torre_id}>{t.nombre}</Select.Option>)}
-              </Select>
-            )}
             <Select value={filtroEstado || undefined} onChange={setFiltroEstado}
               placeholder="Todos los estados" allowClear style={{ width: 180 }}>
               <Select.Option value="disponible">Disponible</Select.Option>
@@ -386,7 +437,7 @@ const InventarioPage = () => {
           <Table
             dataSource={unidades} columns={columns} rowKey="unidad_id"
             loading={loading} pagination={{ pageSize: 20 }}
-            locale={{ emptyText: 'No hay unidades para este proyecto' }}
+            locale={{ emptyText: 'No hay unidades en este edificio' }}
           />
         </>
       )}
@@ -402,7 +453,7 @@ const InventarioPage = () => {
       >
         <Form form={formProyecto} layout="vertical" onFinish={handleGuardarProyecto}>
           <Form.Item name="nombre" label="Nombre" rules={[{ required: true, message: 'Requerido' }]}>
-            <Input placeholder="Ej: Torre Mirador" />
+            <Input placeholder="Ej: Residencias El Pinar" />
           </Form.Item>
           <Form.Item name="descripcion" label="Descripción">
             <Input.TextArea rows={3} placeholder="Descripción opcional" />
@@ -423,21 +474,8 @@ const InventarioPage = () => {
           <Form.Item name="id_unidad" label="ID de la unidad" rules={[{ required: true, message: 'Requerido' }]}>
             <Input placeholder="Ej: A-101" />
           </Form.Item>
-          <Form.Item name="etapa_id" label="Etapa" rules={[{ required: true, message: 'Requerido' }]}>
-            <Select placeholder="Selecciona una etapa" onChange={(val) => {
-              setEtapaUnidadSeleccionada(val);
-              formUnidad.setFieldValue('torre_id', undefined);
-            }}>
-              {etapas.map(e => <Select.Option key={e.etapa_id} value={e.etapa_id}>{e.nombre}</Select.Option>)}
-            </Select>
-          </Form.Item>
-          <Form.Item name="torre_id" label="Torre" rules={[{ required: true, message: 'Requerido' }]}>
-            <Select placeholder={etapaUnidadSeleccionada ? 'Selecciona una torre' : 'Primero selecciona una etapa'} disabled={!etapaUnidadSeleccionada}>
-              {torres.filter(t => t.etapa_id === etapaUnidadSeleccionada).map(t => (
-                <Select.Option key={t.torre_id} value={t.torre_id}>{t.nombre}</Select.Option>
-              ))}
-            </Select>
-          </Form.Item>
+          <Form.Item name="torre_id" hidden><Input /></Form.Item>
+          <Form.Item name="etapa_id" hidden><Input /></Form.Item>
           <Form.Item name="metraje" label="Metraje (m²)" rules={[{ required: true, message: 'Requerido' }]}>
             <Input type="number" placeholder="Ej: 85.5" />
           </Form.Item>
@@ -447,15 +485,13 @@ const InventarioPage = () => {
         </Form>
       </Modal>
 
-      {/* Drawer Etapas y Torres */}
+      {/* Drawer solo Etapas */}
       <Drawer
-        title="Etapas y Torres"
+        title="Etapas"
         open={drawerOpen}
-        onClose={() => { setDrawerOpen(false); setEtapaEditando(null); setTorreEditando(null); formEtapa.resetFields(); formTorre.resetFields(); }}
-        width={420}
+        onClose={() => { setDrawerOpen(false); setEtapaEditando(null); formEtapa.resetFields(); }}
+        width={380}
       >
-        {/* Etapas */}
-        <Text strong>Etapas</Text>
         <div style={{ marginTop: 8, marginBottom: 16 }}>
           {etapas.map(e => (
             <div key={e.etapa_id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 0', borderBottom: '1px solid #f0f0f0' }}>
@@ -482,46 +518,28 @@ const InventarioPage = () => {
             </Form.Item>
           )}
         </Form>
+      </Drawer>
 
-        <Divider />
-
-        {/* Torres */}
-        <Text strong>Torres</Text>
-        <div style={{ marginTop: 8, marginBottom: 16 }}>
-          {torres.map(t => (
-            <div key={t.torre_id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 0', borderBottom: '1px solid #f0f0f0' }}>
-              <div>
-                <Text>{t.nombre}</Text>
-                <Text type="secondary" style={{ fontSize: 12, marginLeft: 8 }}>
-                  {etapas.find(e => e.etapa_id === t.etapa_id)?.nombre}
-                </Text>
-              </div>
-              <Space>
-                <Button size="small" icon={<EditOutlined />} onClick={() => { setTorreEditando(t); formTorre.setFieldsValue({ nombre: t.nombre, etapa_id: t.etapa_id, orden: t.orden }); }} />
-                <Popconfirm title="¿Eliminar torre?" okText="Sí" cancelText="No" onConfirm={() => handleEliminarTorre(t)}>
-                  <Button size="small" danger icon={<DeleteOutlined />} />
-                </Popconfirm>
-              </Space>
-            </div>
-          ))}
-        </div>
+      {/* Modal Edificio */}
+      <Modal
+        title={torreEditando ? 'Editar edificio' : 'Nuevo edificio'}
+        open={modalEdificio}
+        onCancel={() => { setModalEdificio(false); setTorreEditando(null); formTorre.resetFields(); }}
+        onOk={() => formTorre.submit()}
+        okText={torreEditando ? 'Guardar' : 'Crear'}
+        cancelText="Cancelar"
+      >
         <Form form={formTorre} layout="vertical" onFinish={handleGuardarTorre}>
-          <Form.Item name="nombre" label="Nombre" rules={[{ required: true, message: '' }]}>
-            <Input placeholder={torreEditando ? `Editando: ${torreEditando.nombre}` : 'Nueva torre'} />
+          <Form.Item name="nombre" label="Nombre" rules={[{ required: true, message: 'Requerido' }]}>
+            <Input placeholder="Ej: Edificio A" />
           </Form.Item>
-          <Form.Item name="etapa_id" label="Etapa" rules={[{ required: true, message: '' }]}>
+          <Form.Item name="etapa_id" label="Etapa" rules={[{ required: true, message: 'Requerido' }]}>
             <Select placeholder="Selecciona etapa">
               {etapas.map(e => <Select.Option key={e.etapa_id} value={e.etapa_id}>{e.nombre}</Select.Option>)}
             </Select>
           </Form.Item>
-          <Space>
-            <Button type="primary" htmlType="submit">{torreEditando ? 'Guardar' : 'Agregar'}</Button>
-            {torreEditando && (
-              <Button onClick={() => { setTorreEditando(null); formTorre.resetFields(); }}>Cancelar</Button>
-            )}
-          </Space>
         </Form>
-      </Drawer>
+      </Modal>
     </div>
   );
 };

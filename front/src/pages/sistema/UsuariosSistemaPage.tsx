@@ -69,8 +69,13 @@ const UsuariosSistemaPage = () => {
       }
       setModal(false);
       await cargar();
-    } catch {
-      message.error('Error al guardar');
+    } catch (err: any) {
+      try {
+        const body = await err?.response?.body?.json?.();
+        message.error(body?.message ?? 'Error al guardar');
+      } catch {
+        message.error('Error al guardar');
+      }
     }
   };
 

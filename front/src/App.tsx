@@ -9,6 +9,7 @@ import InventarioPage from './pages/inventario/InventarioPage';
 import ClientesPage from './pages/clientes/ClientesPage';
 import InmobiliariasPage from './pages/inmobiliarias/InmobiliariasPage';
 import UsuariosSistemaPage from './pages/sistema/UsuariosSistemaPage';
+import ReportesPage from './pages/reportes/ReportesPage';
 
 const App = () => (
   <BrowserRouter>
@@ -28,6 +29,7 @@ const App = () => (
           <Route path="dashboard" element={<DashboardPage />} />
           <Route path="inventario" element={<InventarioPage />} />
           <Route path="clientes" element={<ClientesPage />} />
+          <Route path="reportes" element={<ReportesPage />} />
           <Route
             path="inmobiliarias"
             element={

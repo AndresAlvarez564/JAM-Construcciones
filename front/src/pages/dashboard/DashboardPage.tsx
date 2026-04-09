@@ -1,14 +1,5 @@
-import { Typography } from 'antd';
-import useAuth from '../../hooks/useAuth';
+import UnderConstruction from '../../components/common/UnderConstruction';
 
-const DashboardPage = () => {
-  const { usuario } = useAuth();
-  return (
-    <div>
-      <Typography.Title level={4}>Bienvenido, {usuario?.nombre}</Typography.Title>
-      <Typography.Text type="secondary">Panel principal — próximamente</Typography.Text>
-    </div>
-  );
-};
+const DashboardPage = () => <UnderConstruction titulo="Dashboard — En construcción" />;
 
 export default DashboardPage;

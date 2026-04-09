@@ -61,12 +61,6 @@ def crear(event):
         cognito.admin_add_user_to_group(
             UserPoolId=USER_POOL_ID, Username=username, GroupName=rol
         )
-        # Marcar MFA como requerido para este usuario — fuerza setup en primer login
-        cognito.admin_set_user_settings(
-            UserPoolId=USER_POOL_ID,
-            Username=username,
-            MFAOptions=[{'DeliveryMedium': 'SOFTWARE_TOKEN', 'AttributeName': 'software_token_mfa'}],
-        )
 
         table = dynamodb.Table(USUARIOS_TABLE)
         item = {

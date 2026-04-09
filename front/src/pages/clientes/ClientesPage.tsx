@@ -1,10 +1,5 @@
-import { Typography } from 'antd';
+import UnderConstruction from '../../components/common/UnderConstruction';
 
-const ClientesPage = () => (
-  <div>
-    <Typography.Title level={4}>Clientes</Typography.Title>
-    <Typography.Text type="secondary">Módulo de captación — TK-05</Typography.Text>
-  </div>
-);
+const ClientesPage = () => <UnderConstruction titulo="Clientes — En construcción" />;
 
 export default ClientesPage;

@@ -21,7 +21,7 @@ e inmobiliarias, garantizando control de acceso desde el inicio.
 
 | Rol | Descripción | MFA |
 |-----|-------------|-----|
-| `inmobiliaria` | Acceso limitado a proyectos asignados. Puede registrar clientes y bloquear unidades | Sin MFA |
+| `inmobiliaria` | Acceso limitado a proyectos asignados. Puede registrar clientes y bloquear unidades | TOTP obligatorio |
 
 ### Matriz de permisos por módulo
 
@@ -104,7 +104,7 @@ e inmobiliarias, garantizando control de acceso desde el inicio.
 
 GSI: `gsi-por-inmobiliaria` → pk: `inmobiliaria_id`, sk: `pk`
 
-> El campo `correo` se agrega al modelo de usuario para soportar recuperación de contraseña en usuarios de inmobiliaria.
+> El campo `correo` se agrega al modelo de usuario para soportar recuperación de contraseña de todos los usuarios.
 
 ---
 
@@ -115,6 +115,7 @@ GSI: `gsi-por-inmobiliaria` → pk: `inmobiliaria_id`, sk: `pk`
 - `supervisor`: solo lectura de todo, sin capacidad de modificar nada
 - `inmobiliaria`: acceso solo a proyectos asignados en su registro de DynamoDB
 - Roles internos JAM (`admin`, `coordinador`, `supervisor`): nombre de usuario alias, MFA TOTP obligatorio
+- Inmobiliarias: nombre de usuario alias, MFA TOTP obligatorio
 - Deshabilitar: `activo = false` en DynamoDB + deshabilitar en Cognito (historial preservado)
 - Múltiples correos por inmobiliaria: campo `correos[]` en `INMOBILIARIA#METADATA`
 
@@ -122,41 +123,39 @@ GSI: `gsi-por-inmobiliaria` → pk: `inmobiliaria_id`, sk: `pk`
 
 ## MFA
 
-### Roles internos JAM (admin, coordinador, supervisor)
+### Todos los usuarios (admin, coordinador, supervisor, inmobiliaria)
 - MFA obligatorio con TOTP (Google Authenticator / Authy)
 - Al primer login, el sistema muestra el QR para configurar el autenticador y la clave secreta en texto para ingreso manual
 - Sin MFA configurado, el usuario no puede acceder al sistema
 - Flujo: `InitiateAuth` → Cognito responde `SOFTWARE_TOKEN_MFA` → frontend solicita código → `RespondToAuthChallenge`
 
-### Inmobiliaria
-- Sin MFA
-
-### Flujo de login con MFA (frontend, roles internos JAM)
+### Flujo de login con MFA (todos los usuarios)
 ```
 login(username, password)
   ↓
-¿Respuesta es tokens? → sesión iniciada (inmobiliaria)
+¿Respuesta es CONTINUE_SIGN_IN_WITH_TOTP_SETUP?
+  → mostrar QR + clave manual para configurar autenticador
+        ↓
+confirmSignIn({ challengeResponse: código })
+  → MFA activado, sesión iniciada (primer login)
   ↓
-¿Respuesta es challenge SOFTWARE_TOKEN_MFA?
+¿Respuesta es CONFIRM_SIGN_IN_WITH_TOTP_CODE?
   → mostrar campo "Código de autenticador"
         ↓
 confirmSignIn({ challengeResponse: código })
-  ↓
-Sesión iniciada (rol interno JAM)
+  → Sesión iniciada
 ```
 
 ---
 
 ## Recuperación de contraseña
 
-### Roles internos JAM (admin, coordinador, supervisor)
-- Sin self-service. Recuperación gestionada directamente en la consola AWS por otro admin.
-
-### Inmobiliaria
+### Todos los usuarios (admin, coordinador, supervisor, inmobiliaria)
 - Self-service vía Cognito: "Olvidé mi contraseña"
 - Cognito envía código de verificación al correo registrado
 - Amplify: `resetPassword({ username })` → `confirmResetPassword({ username, confirmationCode, newPassword })`
 - Requiere `accountRecovery: EMAIL_ONLY` (ya configurado)
+- El correo debe estar registrado en el atributo `email` del usuario en Cognito
 
 ---
 
@@ -194,7 +193,7 @@ Sesión iniciada (rol interno JAM)
 
 | Método | Ruta | Rol | Descripción |
 |--------|------|-----|-------------|
-| `POST` | `/auth/forgot-password` | público | Inicia recuperación de contraseña (inmobiliaria) |
+| `POST` | `/auth/forgot-password` | público | Inicia recuperación de contraseña (todos los usuarios) |
 | `POST` | `/auth/confirm-forgot-password` | público | Confirma código y nueva contraseña |
 
 > Manejados directamente desde Amplify sin pasar por Lambda, ya que Cognito los expone nativamente.
@@ -212,22 +211,22 @@ Sesión iniciada (rol interno JAM)
 
 ## Criterios de aceptación
 
-- [x] Login funcional para ambos roles
+- [x] Login funcional para todos los roles
 - [x] Rutas protegidas no accesibles sin token válido
-- [x] El sistema diferencia correctamente `admin` e `inmobiliaria`
-- [ ] El sistema soporta roles `coordinador` y `supervisor` con sus permisos correspondientes
-- [ ] Admin puede crear usuarios internos JAM con rol `coordinador` o `supervisor`
-- [ ] Admin puede deshabilitar usuarios internos sin perder su historial- [x] Token expirado redirige al login automáticamente
+- [x] El sistema diferencia correctamente `admin`, `coordinador`, `supervisor` e `inmobiliaria`
+- [x] El sistema soporta roles `coordinador` y `supervisor` con sus permisos correspondientes
+- [x] Admin puede crear usuarios internos JAM con rol `coordinador` o `supervisor`
+- [x] Admin puede deshabilitar usuarios internos sin perder su historial
+- [x] Token expirado redirige al login automáticamente
 - [x] Layout responsive (desktop y móvil)
 - [x] Base técnica lista para continuar con TK-02 y TK-03
 - [x] Admin puede crear inmobiliarias con múltiples correos de notificación
 - [x] Admin puede crear usuarios con nombre alias (no correo)
 - [x] Admin puede deshabilitar una inmobiliaria sin perder su historial
 - [x] Inmobiliarias solo ven los proyectos que les fueron asignados explícitamente
-- [x] Admin tiene MFA obligatorio con TOTP al iniciar sesión
-- [x] Coordinador y supervisor tienen MFA obligatorio con TOTP al iniciar sesión
-- [x] Primer login de roles internos JAM muestra QR para configurar autenticador y clave manual
-- [x] Usuarios de inmobiliaria pueden recuperar contraseña con código al correo
+- [x] Todos los usuarios tienen MFA obligatorio con TOTP al iniciar sesión
+- [x] Primer login muestra QR para configurar autenticador y clave manual
+- [x] Todos los usuarios pueden recuperar contraseña con código al correo
 
 ---
 
@@ -237,4 +236,4 @@ Sesión iniciada (rol interno JAM)
 - Amplify v6 usa `session.tokens.idToken` para el header `Authorization`
 - Un solo stack CDK sin sufijo de stage (`JamConstrucciones`)
 - Todos los recursos con `RemovalPolicy.RETAIN` para proteger datos en producción
-- MFA TOTP para roles internos JAM se gestiona con `AssociateSoftwareToken` + `VerifySoftwareToken` en el primer login
+- MFA TOTP para todos los usuarios se gestiona con `AssociateSoftwareToken` + `VerifySoftwareToken` en el primer login

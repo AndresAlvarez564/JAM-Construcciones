@@ -19,7 +19,7 @@ const Sidebar = ({ onSelect }: Props) => {
 
   const items = [
     { key: '/dashboard', icon: <HomeOutlined />, label: 'Dashboard' },
-    { key: '/inventario', icon: <AppstoreOutlined />, label: 'Inventario' },
+    { key: '/inventario', icon: <AppstoreOutlined />, label: 'Proyectos' },
     ...(isInterno ? [{ key: '/clientes', icon: <TeamOutlined />, label: 'Clientes' }] : []),
     ...(rol === 'inmobiliaria' ? [{ key: '/clientes', icon: <TeamOutlined />, label: 'Clientes' }] : []),
     ...(isInterno ? [{ key: '/reportes', icon: <BarChartOutlined />, label: 'Reportes' }] : []),
