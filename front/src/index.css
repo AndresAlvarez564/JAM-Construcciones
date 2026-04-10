@@ -31,3 +31,16 @@ input:focus {
   background: #fff !important;
   box-shadow: 0 0 0 3px rgba(45,106,79,0.1);
 }
+
+/* Inventario — colores de fila por estado */
+.row-estado-disponible td    { background: #f6ffed !important; }
+.row-estado-bloqueada td     { background: #fffbe6 !important; }
+.row-estado-no_disponible td { background: #fff7e6 !important; }
+.row-estado-vendida td       { background: #fafafa !important; }
+.row-estado-desvinculada td  { background: #fff1f0 !important; }
+
+.row-estado-disponible:hover td    { background: #d9f7be !important; }
+.row-estado-bloqueada:hover td     { background: #fff1b8 !important; }
+.row-estado-no_disponible:hover td { background: #ffe7ba !important; }
+.row-estado-vendida:hover td       { background: #f0f0f0 !important; }
+.row-estado-desvinculada:hover td  { background: #ffccc7 !important; }

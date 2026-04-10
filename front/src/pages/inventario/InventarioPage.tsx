@@ -1,56 +1,88 @@
 import { useEffect, useState } from 'react';
 import {
   Table, Typography, Tag, Button, Modal, Form, Input, message,
-  Select, Card, Row, Col, Popconfirm, Drawer, Space, Tooltip,
+  Select, Card, Row, Col, Popconfirm, Drawer, Space, Tooltip, Statistic, Upload,
 } from 'antd';
 import {
-  PlusOutlined, AppstoreOutlined,
-  EditOutlined, DeleteOutlined, SettingOutlined, HomeOutlined,
+  PlusOutlined, AppstoreOutlined, EditOutlined, DeleteOutlined,
+  SettingOutlined, HomeOutlined, ArrowLeftOutlined,
+  CheckCircleOutlined, LockOutlined, StopOutlined, DollarOutlined,
+  UploadOutlined,
 } from '@ant-design/icons';
+import type { UploadFile } from 'antd';
 import {
   getProyectos, getUnidades, crearProyecto, actualizarProyecto, eliminarProyecto,
   getEtapas, crearEtapa, actualizarEtapa, eliminarEtapa,
   getTorres, crearTorre, actualizarTorre, eliminarTorre,
   crearUnidad, actualizarUnidad, eliminarUnidad,
+  getPresignedImagenProyecto,
 } from '../../services/proyectos.service';
 import type { Proyecto, Unidad, Etapa, Torre } from '../../types';
 import useAuth from '../../hooks/useAuth';
 
-const { Title, Text, Paragraph } = Typography;
+const { Title, Text } = Typography;
 
 type ModalMode = 'crear' | 'editar';
 type Vista = 'proyectos' | 'edificios' | 'unidades' | 'unidades-proyecto';
+
+const ESTADO_CONFIG: Record<string, { color: string; label: string; tagColor: string }> = {
+  disponible:    { color: '#52c41a', label: 'Disponible',    tagColor: 'success' },
+  bloqueada:     { color: '#faad14', label: 'Bloqueada',     tagColor: 'warning' },
+  no_disponible: { color: '#fa8c16', label: 'No disponible', tagColor: 'orange' },
+  vendida:       { color: '#8c8c8c', label: 'Vendida',       tagColor: 'default' },
+  desvinculada:  { color: '#ff4d4f', label: 'Desvinculada',  tagColor: 'error' },
+};
+
+const estadoTag = (v: string) => {
+  const cfg = ESTADO_CONFIG[v] ?? { label: v, tagColor: 'default' };
+  return <Tag color={cfg.tagColor}>{cfg.label}</Tag>;
+};
+
+// Gradiente único por nombre de proyecto
+const projectGradient = (nombre: string) => {
+  const gradients = [
+    'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+    'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)',
+    'linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)',
+    'linear-gradient(135deg, #43e97b 0%, #38f9d7 100%)',
+    'linear-gradient(135deg, #fa709a 0%, #fee140 100%)',
+    'linear-gradient(135deg, #a18cd1 0%, #fbc2eb 100%)',
+    'linear-gradient(135deg, #ffecd2 0%, #fcb69f 100%)',
+    'linear-gradient(135deg, #ff9a9e 0%, #fecfef 100%)',
+  ];
+  let hash = 0;
+  for (let i = 0; i < nombre.length; i++) hash = nombre.charCodeAt(i) + ((hash << 5) - hash);
+  return gradients[Math.abs(hash) % gradients.length];
+};
 
 const InventarioPage = () => {
   const { usuario } = useAuth();
   const isAdmin = usuario?.rol === 'admin';
 
-  // datos
   const [proyectos, setProyectos] = useState<Proyecto[]>([]);
   const [unidades, setUnidades] = useState<Unidad[]>([]);
   const [etapas, setEtapas] = useState<Etapa[]>([]);
   const [torres, setTorres] = useState<Torre[]>([]);
 
-  // navegación
   const [vista, setVista] = useState<Vista>('proyectos');
   const [proyectoId, setProyectoId] = useState('');
   const [torreId, setTorreId] = useState('');
+  const [etapaId, setEtapaId] = useState('');
   const [filtroEstado, setFiltroEstado] = useState('');
   const [loading, setLoading] = useState(false);
 
-  // modales proyecto
   const [modalProyecto, setModalProyecto] = useState(false);
   const [modoProyecto, setModoProyecto] = useState<ModalMode>('crear');
   const [proyectoEditando, setProyectoEditando] = useState<Proyecto | null>(null);
   const [formProyecto] = Form.useForm();
+  const [imagenFile, setImagenFile] = useState<UploadFile | null>(null);
+  const [uploadingImagen, setUploadingImagen] = useState(false);
 
-  // modales unidad
   const [modalUnidad, setModalUnidad] = useState(false);
   const [modoUnidad, setModoUnidad] = useState<ModalMode>('crear');
   const [unidadEditando, setUnidadEditando] = useState<Unidad | null>(null);
   const [formUnidad] = Form.useForm();
 
-  // drawer etapas/edificios
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [modalEdificio, setModalEdificio] = useState(false);
   const [formEtapa] = Form.useForm();
@@ -59,12 +91,10 @@ const InventarioPage = () => {
   const [torreEditando, setTorreEditando] = useState<Torre | null>(null);
 
   useEffect(() => { cargarProyectos(); }, []);
-
   useEffect(() => {
     if (proyectoId) cargarEtapasYTorres();
     else { setEtapas([]); setTorres([]); }
   }, [proyectoId]);
-
   useEffect(() => {
     if (torreId) cargarUnidades();
     else setUnidades([]);
@@ -99,17 +129,34 @@ const InventarioPage = () => {
     finally { setLoading(false); }
   };
 
-  const cargarTodasUnidades = async (pid: string) => {
+  const cargarTodasUnidades = async (pid: string, eid?: string, tid?: string, est?: string) => {
     setLoading(true);
     try {
-      setUnidades(await getUnidades(pid, { estado: filtroEstado || undefined }));
+      setUnidades(await getUnidades(pid, {
+        etapa_id: eid || undefined,
+        torre_id: tid || undefined,
+        estado: est || undefined,
+      }));
     } catch { message.error('Error al cargar unidades'); }
     finally { setLoading(false); }
   };
 
-  // ── Navegación ─────────────────────────────────────────────
+  // stats de unidades
+  const statsUnidades = {
+    total: unidades.length,
+    disponibles: unidades.filter(u => u.estado === 'disponible').length,
+    bloqueadas: unidades.filter(u => u.estado === 'bloqueada').length,
+    vendidas: unidades.filter(u => u.estado === 'vendida').length,
+  };
+
+  // torres filtradas por etapa seleccionada
+  const torresFiltradas = etapaId
+    ? torres.filter(t => t.etapa_id === etapaId)
+    : torres;
+
+  // ── Navegación ──────────────────────────────────────────────
   const seleccionarProyecto = (id: string) => {
-    setProyectoId(id); setTorreId(''); setFiltroEstado('');
+    setProyectoId(id); setTorreId(''); setEtapaId(''); setFiltroEstado('');
     setVista('unidades-proyecto');
     cargarTodasUnidades(id);
   };
@@ -119,44 +166,58 @@ const InventarioPage = () => {
     setVista('unidades');
   };
 
-  const verTodasUnidades = (pid: string) => {
-    setTorreId(''); setFiltroEstado('');
-    setVista('unidades-proyecto');
-    cargarTodasUnidades(pid);
-  };
-
   const volverAProyectos = () => {
-    setProyectoId(''); setTorreId(''); setFiltroEstado('');
+    setProyectoId(''); setTorreId(''); setEtapaId(''); setFiltroEstado('');
     setVista('proyectos');
   };
 
   const volverAEdificios = () => {
-    setTorreId(''); setFiltroEstado('');
+    setTorreId(''); setEtapaId(''); setFiltroEstado('');
     setVista('edificios');
   };
 
-  // ── Proyectos ──────────────────────────────────────────────
+  // ── Proyectos ────────────────────────────────────────────────
   const abrirCrearProyecto = () => {
     setModoProyecto('crear'); setProyectoEditando(null);
+    setImagenFile(null);
     formProyecto.resetFields(); setModalProyecto(true);
   };
 
   const abrirEditarProyecto = (p: Proyecto, e: React.MouseEvent) => {
     e.stopPropagation();
     setModoProyecto('editar'); setProyectoEditando(p);
+    setImagenFile(null);
     formProyecto.setFieldsValue({ nombre: p.nombre, descripcion: p.descripcion });
     setModalProyecto(true);
   };
 
   const handleGuardarProyecto = async (values: { nombre: string; descripcion?: string }) => {
     try {
+      setUploadingImagen(true);
+      let imagen_url: string | undefined;
+
       if (modoProyecto === 'crear') {
-        await crearProyecto(values); message.success('Proyecto creado');
+        const proyecto = await crearProyecto(values);
+        // subir imagen si hay
+        if (imagenFile?.originFileObj) {
+          const { upload_url, public_url } = await getPresignedImagenProyecto(proyecto.proyecto_id);
+          await fetch(upload_url, { method: 'PUT', body: imagenFile.originFileObj, headers: { 'Content-Type': 'image/jpeg' } });
+          imagen_url = public_url;
+          await actualizarProyecto(proyecto.proyecto_id, { imagen_url });
+        }
+        message.success('Proyecto creado');
       } else if (proyectoEditando) {
-        await actualizarProyecto(proyectoEditando.proyecto_id, values); message.success('Proyecto actualizado');
+        if (imagenFile?.originFileObj) {
+          const { upload_url, public_url } = await getPresignedImagenProyecto(proyectoEditando.proyecto_id);
+          await fetch(upload_url, { method: 'PUT', body: imagenFile.originFileObj, headers: { 'Content-Type': 'image/jpeg' } });
+          imagen_url = public_url;
+        }
+        await actualizarProyecto(proyectoEditando.proyecto_id, { ...values, ...(imagen_url ? { imagen_url } : {}) });
+        message.success('Proyecto actualizado');
       }
-      await cargarProyectos(); setModalProyecto(false);
+      await cargarProyectos(); setModalProyecto(false); setImagenFile(null);
     } catch { message.error('Error al guardar proyecto'); }
+    finally { setUploadingImagen(false); }
   };
 
   const handleEliminarProyecto = async (p: Proyecto, e?: React.MouseEvent) => {
@@ -167,7 +228,7 @@ const InventarioPage = () => {
     } catch { message.error('Error al eliminar proyecto'); }
   };
 
-  // ── Etapas ─────────────────────────────────────────────────
+  // ── Etapas ───────────────────────────────────────────────────
   const handleGuardarEtapa = async (values: { nombre: string; orden?: number }) => {
     try {
       if (etapaEditando) {
@@ -186,7 +247,7 @@ const InventarioPage = () => {
     } catch (err: any) { message.error(err?.message || 'Error al eliminar etapa'); }
   };
 
-  // ── Edificios ──────────────────────────────────────────────
+  // ── Edificios ────────────────────────────────────────────────
   const handleGuardarTorre = async (values: { nombre: string; etapa_id: string; orden?: number }) => {
     try {
       if (torreEditando) {
@@ -205,7 +266,7 @@ const InventarioPage = () => {
     } catch (err: any) { message.error(err?.message || 'Error al eliminar edificio'); }
   };
 
-  // ── Unidades ───────────────────────────────────────────────
+  // ── Unidades ─────────────────────────────────────────────────
   const abrirCrearUnidad = () => {
     setModoUnidad('crear'); setUnidadEditando(null);
     formUnidad.resetFields();
@@ -250,20 +311,35 @@ const InventarioPage = () => {
     } catch { message.error('Error al eliminar unidad'); }
   };
 
-  // ── Columnas tabla ─────────────────────────────────────────
+  // ── Columnas tabla ───────────────────────────────────────────
   const columnaEdificio = {
     title: 'Edificio', dataIndex: 'torre_id', key: 'torre_id',
     render: (v: string) => torres.find(t => t.torre_id === v)?.nombre ?? v,
   };
 
+  const columnaEtapa = {
+    title: 'Etapa', dataIndex: 'etapa_id', key: 'etapa_id',
+    render: (v: string) => {
+      const e = etapas.find(et => et.etapa_id === v);
+      return e ? <Tag color="blue">{e.nombre}</Tag> : v;
+    },
+  };
+
   const columnsBase = [
-    { title: 'Unidad', dataIndex: 'id_unidad', key: 'id_unidad' },
+    { title: 'Unidad', dataIndex: 'id_unidad', key: 'id_unidad', render: (v: string) => <Text strong>{v}</Text> },
     { title: 'Metraje', dataIndex: 'metraje', key: 'metraje', render: (v: any) => `${parseFloat(v) || 0} m²` },
-    { title: 'Precio', dataIndex: 'precio', key: 'precio', render: (v: any) => `${parseFloat(v)?.toLocaleString() ?? '—'}` },
+    {
+      title: 'Precio', dataIndex: 'precio', key: 'precio',
+      render: (v: any) => `$${parseFloat(v)?.toLocaleString('es-VE') ?? '—'}`,
+    },
     {
       title: 'Estado', dataIndex: 'estado', key: 'estado',
-      render: (v: string) => <Tag color={v === 'disponible' ? 'green' : 'default'}>{v}</Tag>,
+      render: estadoTag,
     },
+    ...(isAdmin ? [
+      { title: 'Bloqueado por', dataIndex: 'bloqueado_por', key: 'bloqueado_por', render: (v: string) => v ?? <Text type="secondary">—</Text> },
+      { title: 'Fecha bloqueo', dataIndex: 'fecha_bloqueo', key: 'fecha_bloqueo', render: (v: string) => v ? new Date(v).toLocaleDateString('es-VE') : <Text type="secondary">—</Text> },
+    ] : []),
     ...(isAdmin ? [{
       title: '', key: 'acciones', width: 80,
       render: (_: any, u: Unidad) => (
@@ -281,23 +357,44 @@ const InventarioPage = () => {
     }] : []),
   ];
 
-  const columns = vista === 'unidades-proyecto'
-    ? [columnsBase[0], columnaEdificio, ...columnsBase.slice(1)]
+  const columns = (vista === 'unidades-proyecto')
+    ? [columnsBase[0], columnaEtapa, columnaEdificio, ...columnsBase.slice(1)]
     : columnsBase;
 
   const proyectoActual = proyectos.find(p => p.proyecto_id === proyectoId);
   const edificioActual = torres.find(t => t.torre_id === torreId);
 
   return (
-    <div style={{ padding: 24 }}>
-      {/* Header */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
-        <Title level={2} style={{ margin: 0 }}>
-          {vista === 'proyectos' && 'Proyectos'}
-          {vista === 'edificios' && 'Edificios'}
-          {vista === 'unidades' && 'Inventario'}
-          {vista === 'unidades-proyecto' && 'Inventario'}
-        </Title>
+    <div>
+      {/* ── Header ── */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          {vista !== 'proyectos' && (
+            <Button
+              icon={<ArrowLeftOutlined />}
+              onClick={vista === 'unidades' ? volverAEdificios : volverAProyectos}
+              type="text"
+              style={{ padding: '4px 8px' }}
+            />
+          )}
+          <div>
+            <Title level={4} style={{ margin: 0 }}>
+              {vista === 'proyectos' && 'Proyectos'}
+              {vista === 'edificios' && proyectoActual?.nombre}
+              {(vista === 'unidades' || vista === 'unidades-proyecto') && (
+                vista === 'unidades' ? edificioActual?.nombre : `${proyectoActual?.nombre} — Inventario`
+              )}
+            </Title>
+            {vista !== 'proyectos' && (
+              <Text type="secondary" style={{ fontSize: 12 }}>
+                {vista === 'edificios' && 'Selecciona un edificio para ver sus unidades'}
+                {vista === 'unidades' && `${proyectoActual?.nombre} / ${edificioActual?.nombre}`}
+                {vista === 'unidades-proyecto' && 'Todas las unidades del proyecto'}
+              </Text>
+            )}
+          </div>
+        </div>
+
         {isAdmin && (
           <Space>
             {vista === 'proyectos' && (
@@ -307,197 +404,317 @@ const InventarioPage = () => {
             )}
             {vista === 'edificios' && (
               <>
-                <Button icon={<SettingOutlined />} onClick={() => setDrawerOpen(true)}>
-                  Etapas
+                <Button icon={<SettingOutlined />} onClick={() => setDrawerOpen(true)}>Etapas</Button>
+                <Button icon={<AppstoreOutlined />} onClick={() => { setTorreId(''); setVista('unidades-proyecto'); cargarTodasUnidades(proyectoId); }}>
+                  Ver todas las unidades
                 </Button>
                 <Button type="primary" icon={<PlusOutlined />} onClick={() => { setTorreEditando(null); formTorre.resetFields(); setModalEdificio(true); }}>
                   Nuevo edificio
                 </Button>
               </>
             )}
-            {vista === 'unidades' && isAdmin && (
+            {(vista === 'unidades' || vista === 'unidades-proyecto') && (
               <Button type="primary" icon={<PlusOutlined />} onClick={abrirCrearUnidad}>
                 Nueva unidad
               </Button>
             )}
             {vista === 'unidades-proyecto' && (
-              <Space>
-                <Button icon={<HomeOutlined />} onClick={volverAEdificios}>
-                  Ver por edificio
+              <>
+                <Button icon={<SettingOutlined />} onClick={() => setDrawerOpen(true)}>Etapas</Button>
+                <Button icon={<PlusOutlined />} onClick={() => { setTorreEditando(null); formTorre.resetFields(); setModalEdificio(true); }}>
+                  Nuevo edificio
                 </Button>
-                {isAdmin && (
-                  <Button type="primary" icon={<PlusOutlined />} onClick={abrirCrearUnidad}>
-                    Nueva unidad
-                  </Button>
-                )}
-              </Space>
+                <Button icon={<HomeOutlined />} onClick={volverAEdificios}>Ver por edificio</Button>
+              </>
             )}
           </Space>
         )}
       </div>
 
-      {/* Breadcrumb */}
-      {vista !== 'proyectos' && (
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 16, flexWrap: 'wrap' }}>
-          <Button size="small" type="link" icon={<HomeOutlined />} onClick={volverAProyectos} style={{ padding: 0 }}>
-            Proyectos
-          </Button>
-          {vista === 'unidades' && (
-            <>
-              <Text type="secondary">/</Text>
-              <Button size="small" type="link" onClick={volverAEdificios} style={{ padding: 0 }}>
-                {proyectoActual?.nombre}
-              </Button>
-              <Text type="secondary">/</Text>
-              <Text strong>{edificioActual?.nombre}</Text>
-            </>
-          )}
-          {vista === 'edificios' && (
-            <>
-              <Text type="secondary">/</Text>
-              <Text strong>{proyectoActual?.nombre}</Text>
-            </>
-          )}
-          {vista === 'unidades-proyecto' && (
-            <>
-              <Text type="secondary">/</Text>
-              <Text strong>{proyectoActual?.nombre}</Text>
-              <Text type="secondary">/</Text>
-              <Text strong>Todas las unidades</Text>
-            </>
-          )}
-        </div>
-      )}
-
-      {/* Vista: cards de proyectos */}
+      {/* ── Vista: proyectos ── */}
       {vista === 'proyectos' && (
-        <Row gutter={[16, 16]}>
+        <Row gutter={[20, 20]}>
           {proyectos.map(p => (
             <Col key={p.proyecto_id} xs={24} sm={12} md={8} lg={6}>
-              <Card
-                hoverable
+              <div
+                style={{
+                  borderRadius: 16, overflow: 'hidden', cursor: 'pointer',
+                  background: '#fff', border: '1px solid #f0f0f0',
+                  boxShadow: '0 2px 8px rgba(0,0,0,0.06)',
+                  transition: 'box-shadow 0.2s, transform 0.2s',
+                }}
                 onClick={() => seleccionarProyecto(p.proyecto_id)}
-                styles={{ body: { padding: 20 } }}
-                style={{ borderRadius: 10 }}
+                onMouseEnter={e => {
+                  (e.currentTarget as HTMLDivElement).style.boxShadow = '0 8px 24px rgba(0,0,0,0.12)';
+                  (e.currentTarget as HTMLDivElement).style.transform = 'translateY(-2px)';
+                }}
+                onMouseLeave={e => {
+                  (e.currentTarget as HTMLDivElement).style.boxShadow = '0 2px 8px rgba(0,0,0,0.06)';
+                  (e.currentTarget as HTMLDivElement).style.transform = 'translateY(0)';
+                }}
               >
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                  <div style={{ display: 'flex', gap: 12, alignItems: 'center', flex: 1, minWidth: 0 }}>
-                    <AppstoreOutlined style={{ fontSize: 26, color: '#1677ff', flexShrink: 0 }} />
-                    <div style={{ minWidth: 0 }}>
-                      <Text strong style={{ fontSize: 15 }}>{p.nombre}</Text>
-                      {p.descripcion && (
-                        <Paragraph type="secondary" style={{ margin: 0, fontSize: 12 }} ellipsis={{ rows: 2 }}>
-                          {p.descripcion}
-                        </Paragraph>
-                      )}
-                    </div>
-                  </div>
+                {/* Cover */}
+                <div style={{
+                  height: 160,
+                  background: p.imagen_url ? undefined : projectGradient(p.nombre),
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  position: 'relative', overflow: 'hidden',
+                }}>
+                  {p.imagen_url
+                    ? <img src={p.imagen_url} alt={p.nombre} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                    : <AppstoreOutlined style={{ fontSize: 48, color: 'rgba(255,255,255,0.5)' }} />
+                  }
                   {isAdmin && (
-                    <Space style={{ flexShrink: 0, marginLeft: 8 }} onClick={e => e.stopPropagation()}>
-                      <Tooltip title="Editar">
-                        <Button size="small" icon={<EditOutlined />} onClick={(e) => abrirEditarProyecto(p, e)} />
-                      </Tooltip>
-                      <Popconfirm
-                        title="¿Desactivar proyecto?"
-                        okText="Sí" cancelText="No"
-                        onConfirm={(e) => handleEliminarProyecto(p, e as any)}
-                      >
-                        <Tooltip title="Eliminar">
-                          <Button size="small" danger icon={<DeleteOutlined />} />
-                        </Tooltip>
-                      </Popconfirm>
-                    </Space>
-                  )}
-                </div>
-              </Card>
-            </Col>
-          ))}
-          {proyectos.length === 0 && (
-            <Col span={24}><Text type="secondary">No hay proyectos disponibles.</Text></Col>
-          )}
-        </Row>
-      )}
-
-      {/* Vista: cards de edificios */}
-      {vista === 'edificios' && (
-        <Row gutter={[16, 16]}>
-          {torres.map(t => {
-            const etapa = etapas.find(e => e.etapa_id === t.etapa_id);
-            return (
-              <Col key={t.torre_id} xs={24} sm={12} md={8} lg={6}>
-                <Card
-                  hoverable
-                  onClick={() => seleccionarEdificio(t.torre_id)}
-                  styles={{ body: { padding: 20 } }}
-                  style={{ borderRadius: 10 }}
-                >
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                    <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
-                      <HomeOutlined style={{ fontSize: 26, color: '#1677ff', flexShrink: 0, marginTop: 2 }} />
-                      <div>
-                        <Text strong style={{ fontSize: 15 }}>{t.nombre}</Text>
-                        {etapa && (
-                          <div style={{ marginTop: 6 }}>
-                            <Tag color="blue">{etapa.nombre}</Tag>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                    {isAdmin && (
-                      <Space style={{ flexShrink: 0, marginLeft: 8 }} onClick={e => e.stopPropagation()}>
+                    <div
+                      style={{ position: 'absolute', top: 10, right: 10 }}
+                      onClick={e => e.stopPropagation()}
+                    >
+                      <Space>
                         <Tooltip title="Editar">
-                          <Button size="small" icon={<EditOutlined />} onClick={(e) => { e.stopPropagation(); setTorreEditando(t); formTorre.setFieldsValue({ nombre: t.nombre, etapa_id: t.etapa_id }); setModalEdificio(true); }} />
+                          <Button
+                            size="small" type="text"
+                            icon={<EditOutlined />}
+                            style={{ color: '#fff', background: 'rgba(0,0,0,0.25)', borderRadius: 6 }}
+                            onClick={(e) => abrirEditarProyecto(p, e)}
+                          />
                         </Tooltip>
-                        <Popconfirm title="¿Eliminar edificio?" okText="Sí" cancelText="No" onConfirm={() => handleEliminarTorre(t)}>
+                        <Popconfirm title="¿Desactivar proyecto?" okText="Sí" cancelText="No" onConfirm={(e) => handleEliminarProyecto(p, e as any)}>
                           <Tooltip title="Eliminar">
-                            <Button size="small" danger icon={<DeleteOutlined />} />
+                            <Button
+                              size="small" type="text" danger
+                              icon={<DeleteOutlined />}
+                              style={{ background: 'rgba(0,0,0,0.25)', borderRadius: 6 }}
+                            />
                           </Tooltip>
                         </Popconfirm>
                       </Space>
-                    )}
-                  </div>
-                </Card>
-              </Col>
-            );
-          })}
-          {torres.length === 0 && (
-            <Col span={24}><Text type="secondary">No hay edificios en este proyecto.</Text></Col>
+                    </div>
+                  )}
+                </div>
+                {/* Info */}
+                <div style={{ padding: '14px 16px 16px' }}>
+                  <Text strong style={{ fontSize: 15, display: 'block', marginBottom: 4 }}>{p.nombre}</Text>
+                  {p.descripcion
+                    ? <Text type="secondary" style={{ fontSize: 13 }} ellipsis={{ tooltip: p.descripcion }}>{p.descripcion}</Text>
+                    : <Text type="secondary" style={{ fontSize: 13, fontStyle: 'italic' }}>Sin descripción</Text>
+                  }
+                </div>
+              </div>
+            </Col>
+          ))}
+          {proyectos.length === 0 && (
+            <Col span={24}>
+              <div style={{ textAlign: 'center', padding: 60 }}>
+                <AppstoreOutlined style={{ fontSize: 48, color: '#d9d9d9', marginBottom: 12 }} />
+                <div><Text type="secondary">No hay proyectos disponibles</Text></div>
+              </div>
+            </Col>
           )}
         </Row>
       )}
 
-      {/* Vista: tabla de unidades (por edificio o por proyecto) */}
-      {(vista === 'unidades' || vista === 'unidades-proyecto') && (
+      {/* ── Vista: edificios ── */}
+      {vista === 'edificios' && (
         <>
-          <div style={{ marginBottom: 16, display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
-            <Select value={filtroEstado || undefined} onChange={v => {
-              setFiltroEstado(v ?? '');
-              if (vista === 'unidades-proyecto') cargarTodasUnidades(proyectoId);
-            }}
-              placeholder="Todos los estados" allowClear style={{ width: 180 }}>
-              <Select.Option value="disponible">Disponible</Select.Option>
-              <Select.Option value="bloqueada">Bloqueada</Select.Option>
-              <Select.Option value="no_disponible">No disponible</Select.Option>
-              <Select.Option value="vendida">Vendida</Select.Option>
-              <Select.Option value="desvinculada">Desvinculada</Select.Option>
-            </Select>
-          </div>
-          <Table
-            dataSource={unidades} columns={columns} rowKey="unidad_id"
-            loading={loading} pagination={{ pageSize: 20 }}
-            locale={{ emptyText: 'No hay unidades' }}
-          />
+          {/* Agrupar por etapa */}
+          {etapas.filter(e => torres.some(t => t.etapa_id === e.etapa_id)).map((etapa, ei) => {
+            const ETAPA_COLORS = ['#1677ff','#7c3aed','#f5576c','#43e97b','#fa8c16','#00b96b'];
+            const color = ETAPA_COLORS[ei % ETAPA_COLORS.length];
+            const torresEtapa = torres.filter(t => t.etapa_id === etapa.etapa_id);
+            return (
+              <div key={etapa.etapa_id} style={{ marginBottom: 28 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
+                  <div style={{ width: 4, height: 18, borderRadius: 2, background: color }} />
+                  <Text strong style={{ fontSize: 15 }}>{etapa.nombre}</Text>
+                  <Tag style={{ marginLeft: 4 }}>{torresEtapa.length} edificio{torresEtapa.length !== 1 ? 's' : ''}</Tag>
+                </div>
+                <Row gutter={[16, 16]}>
+                  {torresEtapa.map(t => (
+                    <Col key={t.torre_id} xs={24} sm={12} md={8} lg={6}>
+                      <div
+                        onClick={() => seleccionarEdificio(t.torre_id)}
+                        style={{
+                          borderRadius: 14, overflow: 'hidden', cursor: 'pointer',
+                          background: '#fff', border: `1px solid #f0f0f0`,
+                          boxShadow: '0 2px 8px rgba(0,0,0,0.05)',
+                          transition: 'box-shadow 0.2s, transform 0.2s',
+                        }}
+                        onMouseEnter={e => {
+                          (e.currentTarget as HTMLDivElement).style.boxShadow = `0 6px 20px rgba(0,0,0,0.1)`;
+                          (e.currentTarget as HTMLDivElement).style.transform = 'translateY(-2px)';
+                          (e.currentTarget as HTMLDivElement).style.borderColor = color;
+                        }}
+                        onMouseLeave={e => {
+                          (e.currentTarget as HTMLDivElement).style.boxShadow = '0 2px 8px rgba(0,0,0,0.05)';
+                          (e.currentTarget as HTMLDivElement).style.transform = 'translateY(0)';
+                          (e.currentTarget as HTMLDivElement).style.borderColor = '#f0f0f0';
+                        }}
+                      >
+                        {/* Banda de color */}
+                        <div style={{ height: 6, background: color }} />
+                        <div style={{ padding: '16px 16px 14px' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                            <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+                              <div style={{
+                                width: 44, height: 44, borderRadius: 10, flexShrink: 0,
+                                background: `${color}18`,
+                                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                              }}>
+                                <HomeOutlined style={{ fontSize: 20, color }} />
+                              </div>
+                              <div>
+                                <Text strong style={{ fontSize: 14, display: 'block' }}>{t.nombre}</Text>
+                                <Text type="secondary" style={{ fontSize: 12 }}>{etapa.nombre}</Text>
+                              </div>
+                            </div>
+                            {isAdmin && (
+                              <Space onClick={e => e.stopPropagation()}>
+                                <Tooltip title="Editar">
+                                  <Button size="small" type="text" icon={<EditOutlined />}
+                                    onClick={e => { e.stopPropagation(); setTorreEditando(t); formTorre.setFieldsValue({ nombre: t.nombre, etapa_id: t.etapa_id }); setModalEdificio(true); }} />
+                                </Tooltip>
+                                <Popconfirm title="¿Eliminar edificio?" okText="Sí" cancelText="No" onConfirm={() => handleEliminarTorre(t)}>
+                                  <Tooltip title="Eliminar">
+                                    <Button size="small" type="text" danger icon={<DeleteOutlined />} />
+                                  </Tooltip>
+                                </Popconfirm>
+                              </Space>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    </Col>
+                  ))}
+                </Row>
+              </div>
+            );
+          })}
+          {torres.length === 0 && (
+            <div style={{ textAlign: 'center', padding: 60 }}>
+              <HomeOutlined style={{ fontSize: 48, color: '#d9d9d9', marginBottom: 12 }} />
+              <div><Text type="secondary">No hay edificios en este proyecto</Text></div>
+            </div>
+          )}
         </>
       )}
 
-      {/* Modal Proyecto */}
+      {/* ── Vista: unidades ── */}
+      {(vista === 'unidades' || vista === 'unidades-proyecto') && (
+        <>
+          {/* Stats row */}
+          <Row gutter={[12, 12]} style={{ marginBottom: 20 }}>
+            {[
+              { label: 'Total', value: statsUnidades.total, icon: <AppstoreOutlined />, color: '#1677ff', bg: '#e6f4ff' },
+              { label: 'Disponibles', value: statsUnidades.disponibles, icon: <CheckCircleOutlined />, color: '#52c41a', bg: '#f6ffed' },
+              { label: 'Bloqueadas', value: statsUnidades.bloqueadas, icon: <LockOutlined />, color: '#faad14', bg: '#fffbe6' },
+              { label: 'Vendidas', value: statsUnidades.vendidas, icon: <DollarOutlined />, color: '#8c8c8c', bg: '#fafafa' },
+            ].map(s => (
+              <Col key={s.label} xs={12} sm={6}>
+                <Card style={{ borderRadius: 12, border: '1px solid #f0f0f0' }} styles={{ body: { padding: '16px 20px' } }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                    <div style={{
+                      width: 36, height: 36, borderRadius: 8,
+                      background: s.bg, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    }}>
+                      <span style={{ color: s.color, fontSize: 16 }}>{s.icon}</span>
+                    </div>
+                    <Statistic title={<span style={{ fontSize: 12 }}>{s.label}</span>} value={s.value} valueStyle={{ fontSize: 22, fontWeight: 600 }} />
+                  </div>
+                </Card>
+              </Col>
+            ))}
+          </Row>
+
+          {/* Filtros */}
+          <Card style={{ borderRadius: 12, marginBottom: 16, border: '1px solid #f0f0f0' }} styles={{ body: { padding: '12px 16px' } }}>
+            <Space wrap>
+              {vista === 'unidades-proyecto' && (
+                <Select
+                  value={etapaId || undefined}
+                  onChange={v => {
+                    const eid = v ?? '';
+                    setEtapaId(eid);
+                    setTorreId('');
+                    cargarTodasUnidades(proyectoId, eid, '', filtroEstado);
+                  }}
+                  placeholder="Todas las etapas"
+                  allowClear
+                  style={{ width: 160 }}
+                >
+                  {etapas.map(e => <Select.Option key={e.etapa_id} value={e.etapa_id}>{e.nombre}</Select.Option>)}
+                </Select>
+              )}
+              {vista === 'unidades-proyecto' && (
+                <Select
+                  value={torreId || undefined}
+                  onChange={v => {
+                    const tid = v ?? '';
+                    setTorreId(tid);
+                    cargarTodasUnidades(proyectoId, etapaId, tid, filtroEstado);
+                  }}
+                  placeholder="Todos los edificios"
+                  allowClear
+                  style={{ width: 160 }}
+                >
+                  {torresFiltradas.map(t => <Select.Option key={t.torre_id} value={t.torre_id}>{t.nombre}</Select.Option>)}
+                </Select>
+              )}
+              <Select
+                value={filtroEstado || undefined}
+                onChange={v => {
+                  const est = v ?? '';
+                  setFiltroEstado(est);
+                  if (vista === 'unidades-proyecto') cargarTodasUnidades(proyectoId, etapaId, torreId, est);
+                }}
+                placeholder="Todos los estados"
+                allowClear
+                style={{ width: 180 }}
+              >
+                {Object.entries(ESTADO_CONFIG).map(([k, cfg]) => (
+                  <Select.Option key={k} value={k}>{cfg.label}</Select.Option>
+                ))}
+              </Select>
+              {(filtroEstado || etapaId || torreId) && (
+                <Button type="text" size="small" onClick={() => {
+                  setFiltroEstado(''); setEtapaId(''); setTorreId('');
+                  cargarTodasUnidades(proyectoId);
+                }}>
+                  Limpiar filtros
+                </Button>
+              )}
+            </Space>
+          </Card>
+
+          {/* Tabla */}
+          <Card style={{ borderRadius: 12, border: '1px solid #f0f0f0' }} styles={{ body: { padding: 0 } }}>
+            <Table
+              dataSource={unidades}
+              columns={columns}
+              rowKey="unidad_id"
+              loading={loading}
+              pagination={{ pageSize: 20, showSizeChanger: false }}
+              locale={{ emptyText: (
+                <div style={{ padding: 40, textAlign: 'center' }}>
+                  <StopOutlined style={{ fontSize: 32, color: '#d9d9d9', marginBottom: 8 }} />
+                  <div><Text type="secondary">No hay unidades con los filtros seleccionados</Text></div>
+                </div>
+              )}}
+              rowClassName={(u: Unidad) => `row-estado-${u.estado}`}
+              style={{ borderRadius: 12, overflow: 'hidden' }}
+            />
+          </Card>
+        </>
+      )}
+
+      {/* ── Modal Proyecto ── */}
       <Modal
         title={modoProyecto === 'crear' ? 'Nuevo proyecto' : 'Editar proyecto'}
         open={modalProyecto}
-        onCancel={() => setModalProyecto(false)}
+        onCancel={() => { setModalProyecto(false); setImagenFile(null); }}
         onOk={() => formProyecto.submit()}
         okText={modoProyecto === 'crear' ? 'Crear' : 'Guardar'}
         cancelText="Cancelar"
+        confirmLoading={uploadingImagen}
       >
         <Form form={formProyecto} layout="vertical" onFinish={handleGuardarProyecto}>
           <Form.Item name="nombre" label="Nombre" rules={[{ required: true, message: 'Requerido' }]}>
@@ -506,10 +723,31 @@ const InventarioPage = () => {
           <Form.Item name="descripcion" label="Descripción">
             <Input.TextArea rows={3} placeholder="Descripción opcional" />
           </Form.Item>
+          <Form.Item label="Imagen de portada">
+            {proyectoEditando?.imagen_url && !imagenFile && (
+              <img
+                src={proyectoEditando.imagen_url}
+                alt="portada actual"
+                style={{ width: '100%', height: 120, objectFit: 'cover', borderRadius: 8, marginBottom: 8 }}
+              />
+            )}
+            <Upload
+              accept="image/jpeg,image/png,image/webp"
+              maxCount={1}
+              beforeUpload={() => false}
+              fileList={imagenFile ? [imagenFile] : []}
+              onChange={({ fileList }) => setImagenFile(fileList[0] ?? null)}
+              listType="picture"
+            >
+              <Button icon={<UploadOutlined />}>
+                {proyectoEditando?.imagen_url ? 'Cambiar imagen' : 'Subir imagen'}
+              </Button>
+            </Upload>
+          </Form.Item>
         </Form>
       </Modal>
 
-      {/* Modal Unidad */}
+      {/* ── Modal Unidad ── */}
       <Modal
         title={modoUnidad === 'crear' ? 'Nueva unidad' : 'Editar unidad'}
         open={modalUnidad}
@@ -522,8 +760,7 @@ const InventarioPage = () => {
           <Form.Item name="id_unidad" label="ID de la unidad" rules={[{ required: true, message: 'Requerido' }]}>
             <Input placeholder="Ej: A-101" />
           </Form.Item>
-          <Form.Item name="torre_id" label="Edificio" rules={[{ required: true, message: 'Requerido' }]}
-            hidden={!!torreId}>
+          <Form.Item name="torre_id" label="Edificio" rules={[{ required: true, message: 'Requerido' }]} hidden={!!torreId}>
             <Select placeholder="Selecciona edificio" disabled={!!torreId}
               onChange={(val: string) => {
                 const etapa = torres.find(t => t.torre_id === val)?.etapa_id;
@@ -542,16 +779,16 @@ const InventarioPage = () => {
         </Form>
       </Modal>
 
-      {/* Drawer solo Etapas */}
+      {/* ── Drawer Etapas ── */}
       <Drawer
         title="Etapas"
         open={drawerOpen}
         onClose={() => { setDrawerOpen(false); setEtapaEditando(null); formEtapa.resetFields(); }}
         width={380}
       >
-        <div style={{ marginTop: 8, marginBottom: 16 }}>
+        <div style={{ marginBottom: 16 }}>
           {etapas.map(e => (
-            <div key={e.etapa_id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 0', borderBottom: '1px solid #f0f0f0' }}>
+            <div key={e.etapa_id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 0', borderBottom: '1px solid #f0f0f0' }}>
               <Text>{e.nombre}</Text>
               <Space>
                 <Button size="small" icon={<EditOutlined />} onClick={() => { setEtapaEditando(e); formEtapa.setFieldsValue({ nombre: e.nombre, orden: e.orden }); }} />
@@ -562,7 +799,7 @@ const InventarioPage = () => {
             </div>
           ))}
         </div>
-        <Form form={formEtapa} layout="inline" onFinish={handleGuardarEtapa} style={{ marginBottom: 4 }}>
+        <Form form={formEtapa} layout="inline" onFinish={handleGuardarEtapa}>
           <Form.Item name="nombre" rules={[{ required: true, message: '' }]} style={{ flex: 1 }}>
             <Input placeholder={etapaEditando ? `Editando: ${etapaEditando.nombre}` : 'Nueva etapa'} />
           </Form.Item>
@@ -577,7 +814,7 @@ const InventarioPage = () => {
         </Form>
       </Drawer>
 
-      {/* Modal Edificio */}
+      {/* ── Modal Edificio ── */}
       <Modal
         title={torreEditando ? 'Editar edificio' : 'Nuevo edificio'}
         open={modalEdificio}

@@ -49,6 +49,9 @@ def handler(event, context):
     if method == 'DELETE' and proyecto_id and path.endswith(f'/{proyecto_id}') and is_admin:
         return proyectos.eliminar(proyecto_id)
 
+    if method == 'POST' and path.endswith('/imagen') and is_admin:
+        return proyectos.presigned_imagen(proyecto_id)
+
     # ===== ETAPAS =====
 
     if method == 'POST' and path.endswith('/etapas') and is_admin:

@@ -28,6 +28,7 @@ export interface Proyecto {
   proyecto_id: string;
   nombre: string;
   descripcion?: string;
+  imagen_url?: string;
   activo: boolean;
   creado_en: string;
 }

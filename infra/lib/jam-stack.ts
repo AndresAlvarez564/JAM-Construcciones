@@ -357,6 +357,12 @@ export class JamStack extends cdk.Stack {
       authorizationType: apigateway.AuthorizationType.COGNITO,
     });
 
+    // /admin/proyectos/{id}/imagen (presigned URL para subir imagen)
+    adminProyectoResource.addResource('imagen').addMethod('POST', proyectosLambdaIntegration, {
+      authorizer: cognitoAuthorizer,
+      authorizationType: apigateway.AuthorizationType.COGNITO,
+    });
+
     // /admin/proyectos/{id}/etapas
     const adminEtapasResource = adminProyectoResource.addResource('etapas');
     adminEtapasResource.addMethod('POST', proyectosLambdaIntegration, {
@@ -429,11 +435,35 @@ export class JamStack extends cdk.Stack {
       removalPolicy: cdk.RemovalPolicy.RETAIN,
     });
 
+    // Bucket para assets (imágenes de proyectos, etc.)
+    const assetsBucket = new s3.Bucket(this, 'JamAssetsBucket', {
+      bucketName: `jam-assets-${this.account}`,
+      blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
+      removalPolicy: cdk.RemovalPolicy.RETAIN,
+      cors: [{
+        allowedMethods: [s3.HttpMethods.PUT, s3.HttpMethods.GET],
+        allowedOrigins: ['*'],
+        allowedHeaders: ['*'],
+        maxAge: 3000,
+      }],
+    });
+
+    const oac = new cloudfront.S3OriginAccessControl(this, 'JamOAC', {
+      signing: cloudfront.Signing.SIGV4_NO_OVERRIDE,
+    });
+
     const distribution = new cloudfront.Distribution(this, 'JamDistribution', {
       defaultBehavior: {
         origin: origins.S3BucketOrigin.withOriginAccessControl(frontendBucket),
         viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
         cachePolicy: cloudfront.CachePolicy.CACHING_OPTIMIZED,
+      },
+      additionalBehaviors: {
+        '/assets/*': {
+          origin: origins.S3BucketOrigin.withOriginAccessControl(assetsBucket, { originAccessControl: oac }),
+          viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
+          cachePolicy: cloudfront.CachePolicy.CACHING_OPTIMIZED,
+        },
       },
       defaultRootObject: 'index.html',
       errorResponses: [
@@ -442,6 +472,11 @@ export class JamStack extends cdk.Stack {
       ],
     });
 
+    // Permisos: proyectosLambda puede generar presigned URLs y escribir en assets
+    assetsBucket.grantReadWrite(proyectosLambda);
+    proyectosLambda.addEnvironment('ASSETS_BUCKET', assetsBucket.bucketName);
+    proyectosLambda.addEnvironment('CLOUDFRONT_URL', `https://${distribution.distributionDomainName}`);
+
     // ─── OUTPUTS ────────────────────────────────────────────────────────────
 
     new cdk.CfnOutput(this, 'UserPoolId', { value: userPool.userPoolId });
@@ -449,5 +484,6 @@ export class JamStack extends cdk.Stack {
     new cdk.CfnOutput(this, 'ApiUrl', { value: api.url });
     new cdk.CfnOutput(this, 'CloudFrontUrl', { value: distribution.distributionDomainName });
     new cdk.CfnOutput(this, 'FrontendBucketName', { value: frontendBucket.bucketName });
+    new cdk.CfnOutput(this, 'AssetsBucketName', { value: assetsBucket.bucketName });
   }
 }

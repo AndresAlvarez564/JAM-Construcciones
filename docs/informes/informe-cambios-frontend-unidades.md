@@ -1,63 +1,89 @@
-# Informe de Cambios — Frontend: Módulo de Inventario
+# Informe de Cambios — Frontend y Backend: TK-03
 
-**Fecha:** 09 de abril de 2026
-**Área:** Frontend — Módulo de Inventario / Unidades
-**Base:** Desde commit `tk2 reunion`
+**Fecha:** Abril 2026
+**Área:** Frontend · Backend · Infraestructura
+**Tickets cubiertos:** TK-03 (visualización de inventario), mejoras de layout e inmobiliarias
 
 ---
 
 ## Resumen
 
-Se realizaron mejoras en la navegación y usabilidad del módulo de inventario, principalmente en la forma en que se visualizan y crean unidades. Adicionalmente se agregaron páginas de "en construcción" para módulos pendientes.
+Se completó el TK-03 con mejoras visuales y funcionales en el módulo de inventario, rediseño del layout general de la aplicación, y mejoras en la página de inmobiliarias. Se agregó infraestructura para subida de imágenes de proyectos (S3 + CloudFront) y un nuevo endpoint de presigned URL en el backend.
 
 ---
 
-## Cambios realizados
+## Cambios por área
 
-### 1. Vista de unidades por proyecto (nueva vista predeterminada)
+### Layout general
 
-Anteriormente al seleccionar un proyecto, el flujo era:
+- Eliminado el Navbar superior. Toda la navegación consolidada en el sidebar.
+- Sidebar rediseñado: logo centrado, secciones agrupadas, item activo en azul, perfil de usuario fijo abajo, logout con hover rojo.
+- Fondo general cambiado a `#f5f7fa`.
+- Sidebar fijo de 250px en desktop, drawer en móvil.
 
-> Proyectos → Edificios → Unidades
+### Módulo de inventario — Proyectos
 
-Ahora la vista predeterminada al entrar a un proyecto es:
+- Cards rediseñadas con imagen de portada (o gradiente único por proyecto como fallback).
+- Subida de imagen desde el formulario de edición, almacenada en S3 y servida por CloudFront.
+- Botones de acción flotando sobre la imagen.
 
-> Proyectos → Todas las unidades del proyecto
+### Módulo de inventario — Edificios
 
-Esta vista muestra todas las unidades sin importar el edificio, con una columna adicional **"Edificio"** para identificar a cuál pertenece cada unidad.
+- Edificios agrupados por etapa con separador visual y barra de color lateral.
+- Cards con banda de color superior según etapa, ícono con fondo suave, hover con borde de color.
+- Botón "Ver todas las unidades" agregado en la vista de edificios.
+- Botones de etapas y nuevo edificio disponibles también desde la vista de todas las unidades.
 
-Desde esta vista se puede acceder a la navegación por edificio mediante el botón **"Ver por edificio"** ubicado en el encabezado, manteniendo el flujo anterior como opción secundaria.
+### Módulo de inventario — Unidades
 
-### 2. Formulario de creación de unidad adaptado por contexto
+- Fila de estadísticas (total, disponibles, bloqueadas, vendidas) encima de la tabla.
+- Filtros en cascada: etapa → torre → estado, con botón de limpiar filtros.
+- Colores de fila diferenciados por estado en la tabla.
+- Columnas de etapa y edificio visibles en la vista de todas las unidades.
+- Columnas `Bloqueado por` y `Fecha de bloqueo` visibles solo para admin.
+- Mensaje de vacío con ícono y contexto.
 
-- Cuando se crea una unidad desde la vista **"todas las unidades"**, el formulario incluye un campo selector de **Edificio**, ya que no hay uno preseleccionado.
-- Al seleccionar el edificio, la etapa se asigna automáticamente.
-- Cuando se crea desde la vista **por edificio**, el campo de edificio permanece oculto y pre-seteado como antes.
+### Inmobiliarias
 
-### 3. Páginas en construcción
+- Cards rediseñadas con banda de color, avatar con inicial, color único por inmobiliaria.
+- Hover con borde del color de la inmobiliaria.
+- Drawer de usuarios rediseñado: header con avatar, nombre, contador y correos.
+- Lista de usuarios con avatar y acciones inline.
 
-Se creó un componente reutilizable `UnderConstruction` y se aplicó a los módulos que aún no tienen implementación:
+### Backend (`jam-proyectos`)
 
-- **Dashboard** — muestra pantalla de en construcción
-- **Clientes** — muestra pantalla de en construcción
-- **Reportes** — página nueva, ruta `/reportes` registrada, muestra pantalla de en construcción
+- Nuevo endpoint `POST /admin/proyectos/{id}/imagen` que genera presigned URL para subida directa a S3.
+- `actualizar()` acepta el campo `imagen_url`.
+- Tipo `Proyecto` actualizado con `imagen_url?: string`.
+
+### Infraestructura (CDK)
+
+- Nuevo bucket S3 `jam-assets-{account}` con CORS configurado para PUT/GET.
+- Behavior adicional en CloudFront para `/assets/*` apuntando al bucket de assets.
+- Permisos de lectura/escritura en S3 otorgados a la lambda `jam-proyectos`.
+- Variables de entorno `ASSETS_BUCKET` y `CLOUDFRONT_URL` inyectadas en la lambda.
+- Nuevo endpoint en API Gateway: `POST /admin/proyectos/{id}/imagen`.
 
 ---
 
 ## Archivos modificados
 
-| Archivo | Tipo |
-|---|---|
-| `front/src/pages/inventario/InventarioPage.tsx` | Modificado |
-| `front/src/pages/dashboard/DashboardPage.tsx` | Modificado |
-| `front/src/pages/clientes/ClientesPage.tsx` | Modificado |
-| `front/src/pages/reportes/ReportesPage.tsx` | Nuevo |
-| `front/src/components/common/UnderConstruction.tsx` | Nuevo |
-| `front/src/App.tsx` | Modificado (ruta `/reportes`) |
+| Archivo | Cambio |
+|---------|--------|
+| `front/src/pages/inventario/InventarioPage.tsx` | Rediseño completo de las 3 vistas |
+| `front/src/pages/inmobiliarias/InmobiliariasPage.tsx` | Rediseño de cards y drawer |
+| `front/src/components/layout/Sidebar.tsx` | Rediseño completo |
+| `front/src/components/layout/AppLayout.tsx` | Eliminado Navbar, sidebar fijo |
+| `front/src/components/layout/Navbar.tsx` | Eliminado |
+| `front/src/services/proyectos.service.ts` | `getPresignedImagenProyecto`, `actualizarProyecto` con `imagen_url` |
+| `front/src/types/index.ts` | `imagen_url` en `Proyecto` |
+| `front/src/index.css` | Colores de fila por estado |
+| `lambdas/jam-proyectos/routes/proyectos.py` | `presigned_imagen()`, `imagen_url` en `actualizar()` |
+| `lambdas/jam-proyectos/handler.py` | Ruta `/imagen` registrada |
+| `infra/lib/jam-stack.ts` | Bucket assets, behavior CloudFront, endpoint imagen |
 
 ---
 
-## Notas
+## Pendiente
 
-- No se realizaron cambios en backend ni infraestructura.
-- Los cambios son compatibles con todos los roles existentes (`admin`, `coordinador`, `supervisor`, `inmobiliaria`).
+- Timer de bloqueo en tiempo real (depende de TK-04: requiere `fecha_liberacion` en el response de unidades).

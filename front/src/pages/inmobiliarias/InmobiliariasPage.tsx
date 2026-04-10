@@ -1,11 +1,11 @@
 import { useEffect, useState } from 'react';
 import {
-  Table, Button, Modal, Form, Input, Tag, Space, Popconfirm,
-  Typography, Drawer, Tooltip, Select, message, Card, Row, Col, Badge,
+  Button, Modal, Form, Input, Tag, Space, Popconfirm,
+  Typography, Drawer, Tooltip, Select, message, Row, Col, Avatar, Badge,
 } from 'antd';
 import {
   PlusOutlined, EditOutlined, StopOutlined, CheckOutlined,
-  DeleteOutlined, BankOutlined,
+  DeleteOutlined, UserOutlined, TeamOutlined, MailOutlined,
 } from '@ant-design/icons';
 import {
   getInmobiliarias, crearInmobiliaria, actualizarInmobiliaria,
@@ -21,18 +21,24 @@ const { Title, Text } = Typography;
 
 type ModalMode = 'crear' | 'editar';
 
+const INMO_COLORS = ['#1677ff','#7c3aed','#f5576c','#00b96b','#fa8c16','#08979c'];
+
+const inmoColor = (nombre: string) => {
+  let hash = 0;
+  for (let i = 0; i < nombre.length; i++) hash = nombre.charCodeAt(i) + ((hash << 5) - hash);
+  return INMO_COLORS[Math.abs(hash) % INMO_COLORS.length];
+};
+
 const InmobiliariasPage = () => {
   const [inmobiliarias, setInmobiliarias] = useState<Inmobiliaria[]>([]);
   const [proyectos, setProyectos] = useState<Proyecto[]>([]);
   const [loading, setLoading] = useState(false);
 
-  // modal inmobiliaria
   const [modalInmo, setModalInmo] = useState(false);
   const [modoInmo, setModoInmo] = useState<ModalMode>('crear');
   const [inmoEditando, setInmoEditando] = useState<Inmobiliaria | null>(null);
   const [formInmo] = Form.useForm();
 
-  // drawer usuarios
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [inmoSeleccionada, setInmoSeleccionada] = useState<Inmobiliaria | null>(null);
   const [usuarios, setUsuarios] = useState<UsuarioInmo[]>([]);
@@ -46,16 +52,10 @@ const InmobiliariasPage = () => {
     setLoading(true);
     try {
       const [inmos, projs] = await Promise.all([getInmobiliarias(), getProyectos()]);
-      setInmobiliarias(inmos);
-      setProyectos(projs);
-    } catch {
-      message.error('Error al cargar datos');
-    } finally {
-      setLoading(false);
-    }
+      setInmobiliarias(inmos); setProyectos(projs);
+    } catch { message.error('Error al cargar datos'); }
+    finally { setLoading(false); }
   };
-
-  // ── Inmobiliarias ──────────────────────────────────────────
 
   const abrirCrear = () => {
     setModoInmo('crear'); setInmoEditando(null);
@@ -99,8 +99,6 @@ const InmobiliariasPage = () => {
     } catch { message.error('Error al eliminar'); }
   };
 
-  // ── Usuarios ───────────────────────────────────────────────
-
   const abrirUsuarios = async (inmo: Inmobiliaria) => {
     setInmoSeleccionada(inmo); setDrawerOpen(true); setLoadingUsuarios(true);
     try {
@@ -123,9 +121,9 @@ const InmobiliariasPage = () => {
     if (!inmoSeleccionada) return;
     try {
       if (u.activo) {
-        await deshabilitarUsuario(inmoSeleccionada.pk, u.pk); message.success('Usuario deshabilitado');
+        await deshabilitarUsuario(inmoSeleccionada.pk, u.pk);
       } else {
-        await habilitarUsuario(inmoSeleccionada.pk, u.pk); message.success('Usuario habilitado');
+        await habilitarUsuario(inmoSeleccionada.pk, u.pk);
       }
       setUsuarios(await getUsuariosInmobiliaria(inmoSeleccionada.pk));
     } catch { message.error('Error al cambiar estado'); }
@@ -134,47 +132,18 @@ const InmobiliariasPage = () => {
   const handleEliminarUsuario = async (u: UsuarioInmo) => {
     if (!inmoSeleccionada) return;
     try {
-      await eliminarUsuarioInmobiliaria(inmoSeleccionada.pk, u.pk); message.success('Usuario eliminado');
+      await eliminarUsuarioInmobiliaria(inmoSeleccionada.pk, u.pk);
       setUsuarios(await getUsuariosInmobiliaria(inmoSeleccionada.pk));
     } catch { message.error('Error al eliminar'); }
   };
 
-  const columnsUsuarios = [
-    { title: 'Usuario', dataIndex: 'cognito_username', key: 'cognito_username' },
-    { title: 'Nombre', dataIndex: 'nombre', key: 'nombre' },
-    {
-      title: 'Estado', dataIndex: 'activo', key: 'activo',
-      render: (v: boolean) => <Tag color={v ? 'green' : 'red'}>{v ? 'Activo' : 'Inactivo'}</Tag>,
-    },
-    {
-      title: '', key: 'acciones', width: 140,
-      render: (_: any, u: UsuarioInmo) => (
-        <Space>
-          <Popconfirm
-            title={u.activo ? '¿Deshabilitar usuario?' : '¿Habilitar usuario?'}
-            okText="Sí" cancelText="No"
-            onConfirm={() => handleToggleUsuario(u)}
-          >
-            <Button size="small" danger={u.activo} type={u.activo ? 'default' : 'primary'}
-              icon={u.activo ? <StopOutlined /> : <CheckOutlined />}>
-              {u.activo ? 'Deshabilitar' : 'Habilitar'}
-            </Button>
-          </Popconfirm>
-          <Popconfirm title="¿Eliminar usuario?" okText="Sí" cancelText="No" okButtonProps={{ danger: true }}
-            onConfirm={() => handleEliminarUsuario(u)}>
-            <Tooltip title="Eliminar">
-              <Button size="small" danger icon={<DeleteOutlined />} />
-            </Tooltip>
-          </Popconfirm>
-        </Space>
-      ),
-    },
-  ];
+  const color = inmoSeleccionada ? inmoColor(inmoSeleccionada.nombre) : '#1677ff';
 
   return (
-    <div style={{ padding: 24 }}>
+    <div>
+      {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
-        <Title level={2} style={{ margin: 0 }}>Inmobiliarias</Title>
+        <Title level={4} style={{ margin: 0 }}>Inmobiliarias</Title>
         <Button type="primary" icon={<PlusOutlined />} onClick={abrirCrear}>
           Nueva inmobiliaria
         </Button>
@@ -182,58 +151,105 @@ const InmobiliariasPage = () => {
 
       {/* Cards */}
       <Row gutter={[16, 16]}>
-        {inmobiliarias.map(inmo => (
-          <Col key={inmo.pk} xs={24} sm={12} md={8} lg={6}>
-            <Card
-              hoverable
-              onClick={() => abrirUsuarios(inmo)}
-              styles={{ body: { padding: 20 } }}
-              style={{ borderRadius: 10, opacity: inmo.activo ? 1 : 0.6 }}
-            >
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start', flex: 1, minWidth: 0 }}>
-                  <BankOutlined style={{ fontSize: 26, color: inmo.activo ? '#1677ff' : '#aaa', flexShrink: 0, marginTop: 2 }} />
-                  <div style={{ minWidth: 0 }}>
-                    <Text strong style={{ fontSize: 15 }}>{inmo.nombre}</Text>
-                    <div style={{ marginTop: 4 }}>
-                      <Badge status={inmo.activo ? 'success' : 'error'} text={inmo.activo ? 'Activa' : 'Inactiva'} />
-                    </div>
-                    {inmo.proyectos?.length > 0 && (
-                      <div style={{ marginTop: 6, display: 'flex', flexWrap: 'wrap', gap: 4 }}>
-                        {inmo.proyectos.map(id => {
-                          const p = proyectos.find(p => p.proyecto_id === id);
-                          return <Tag key={id} style={{ margin: 0 }}>{p?.nombre || id}</Tag>;
-                        })}
+        {inmobiliarias.map(inmo => {
+          const c = inmoColor(inmo.nombre);
+          return (
+            <Col key={inmo.pk} xs={24} sm={12} md={8} lg={6}>
+              <div
+                onClick={() => abrirUsuarios(inmo)}
+                style={{
+                  borderRadius: 14, overflow: 'hidden', cursor: 'pointer',
+                  background: '#fff', border: '1px solid #f0f0f0',
+                  boxShadow: '0 2px 8px rgba(0,0,0,0.05)',
+                  opacity: inmo.activo ? 1 : 0.65,
+                  transition: 'box-shadow 0.2s, transform 0.2s, border-color 0.2s',
+                }}
+                onMouseEnter={e => {
+                  (e.currentTarget as HTMLDivElement).style.boxShadow = '0 6px 20px rgba(0,0,0,0.1)';
+                  (e.currentTarget as HTMLDivElement).style.transform = 'translateY(-2px)';
+                  (e.currentTarget as HTMLDivElement).style.borderColor = c;
+                }}
+                onMouseLeave={e => {
+                  (e.currentTarget as HTMLDivElement).style.boxShadow = '0 2px 8px rgba(0,0,0,0.05)';
+                  (e.currentTarget as HTMLDivElement).style.transform = 'translateY(0)';
+                  (e.currentTarget as HTMLDivElement).style.borderColor = '#f0f0f0';
+                }}
+              >
+                {/* Banda de color */}
+                <div style={{ height: 6, background: c }} />
+
+                <div style={{ padding: '16px 16px 14px' }}>
+                  {/* Top row */}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 }}>
+                    <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+                      <Avatar
+                        size={44}
+                        style={{ background: `${c}20`, color: c, fontWeight: 700, fontSize: 18, flexShrink: 0 }}
+                      >
+                        {inmo.nombre.charAt(0).toUpperCase()}
+                      </Avatar>
+                      <div>
+                        <Text strong style={{ fontSize: 14, display: 'block' }}>{inmo.nombre}</Text>
+                        <Badge
+                          status={inmo.activo ? 'success' : 'error'}
+                          text={<Text style={{ fontSize: 12, color: inmo.activo ? '#52c41a' : '#ff4d4f' }}>
+                            {inmo.activo ? 'Activa' : 'Inactiva'}
+                          </Text>}
+                        />
                       </div>
-                    )}
+                    </div>
+                    <Space onClick={e => e.stopPropagation()}>
+                      <Tooltip title="Editar">
+                        <Button size="small" type="text" icon={<EditOutlined />} onClick={e => abrirEditar(inmo, e)} />
+                      </Tooltip>
+                      <Popconfirm
+                        title={inmo.activo ? '¿Deshabilitar inmobiliaria?' : '¿Habilitar inmobiliaria?'}
+                        okText="Sí" cancelText="No"
+                        onConfirm={e => handleToggleInmo(inmo, e as any)}
+                      >
+                        <Tooltip title={inmo.activo ? 'Deshabilitar' : 'Habilitar'}>
+                          <Button size="small" type="text" danger={inmo.activo}
+                            icon={inmo.activo ? <StopOutlined /> : <CheckOutlined />} />
+                        </Tooltip>
+                      </Popconfirm>
+                      <Popconfirm title="¿Eliminar inmobiliaria?" okText="Sí" cancelText="No" okButtonProps={{ danger: true }}
+                        onConfirm={() => handleEliminarInmo(inmo)}>
+                        <Tooltip title="Eliminar">
+                          <Button size="small" type="text" danger icon={<DeleteOutlined />} />
+                        </Tooltip>
+                      </Popconfirm>
+                    </Space>
+                  </div>
+
+                  {/* Proyectos */}
+                  {inmo.proyectos?.length > 0 ? (
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                      {inmo.proyectos.map(id => {
+                        const p = proyectos.find(p => p.proyecto_id === id);
+                        return <Tag key={id} style={{ margin: 0, fontSize: 11 }}>{p?.nombre || id}</Tag>;
+                      })}
+                    </div>
+                  ) : (
+                    <Text type="secondary" style={{ fontSize: 12, fontStyle: 'italic' }}>Sin proyectos asignados</Text>
+                  )}
+
+                  {/* Footer */}
+                  <div style={{ marginTop: 12, paddingTop: 10, borderTop: '1px solid #f5f5f5', display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <TeamOutlined style={{ color: '#aaa', fontSize: 13 }} />
+                    <Text type="secondary" style={{ fontSize: 12 }}>Ver usuarios</Text>
                   </div>
                 </div>
-                <Space style={{ flexShrink: 0, marginLeft: 8 }} onClick={e => e.stopPropagation()}>
-                  <Tooltip title="Editar">
-                    <Button size="small" icon={<EditOutlined />} onClick={(e) => abrirEditar(inmo, e)} />
-                  </Tooltip>
-                  <Popconfirm
-                    title={inmo.activo ? '¿Deshabilitar inmobiliaria?' : '¿Habilitar inmobiliaria?'}
-                    okText="Sí" cancelText="No"
-                    onConfirm={(e) => handleToggleInmo(inmo, e as any)}
-                  >
-                    <Tooltip title={inmo.activo ? 'Deshabilitar' : 'Habilitar'}>
-                      <Button size="small" danger={inmo.activo} icon={inmo.activo ? <StopOutlined /> : <CheckOutlined />} />
-                    </Tooltip>
-                  </Popconfirm>
-                  <Popconfirm title="¿Eliminar inmobiliaria?" okText="Sí" cancelText="No" okButtonProps={{ danger: true }}
-                    onConfirm={() => handleEliminarInmo(inmo)}>
-                    <Tooltip title="Eliminar">
-                      <Button size="small" danger icon={<DeleteOutlined />} />
-                    </Tooltip>
-                  </Popconfirm>
-                </Space>
               </div>
-            </Card>
-          </Col>
-        ))}
+            </Col>
+          );
+        })}
         {!loading && inmobiliarias.length === 0 && (
-          <Col span={24}><Text type="secondary">No hay inmobiliarias registradas.</Text></Col>
+          <Col span={24}>
+            <div style={{ textAlign: 'center', padding: 60 }}>
+              <TeamOutlined style={{ fontSize: 48, color: '#d9d9d9', marginBottom: 12 }} />
+              <div><Text type="secondary">No hay inmobiliarias registradas</Text></div>
+            </div>
+          </Col>
         )}
       </Row>
 
@@ -266,20 +282,90 @@ const InmobiliariasPage = () => {
 
       {/* Drawer usuarios */}
       <Drawer
-        title={`Usuarios — ${inmoSeleccionada?.nombre}`}
         open={drawerOpen}
         onClose={() => { setDrawerOpen(false); setInmoSeleccionada(null); }}
-        width={480}
-        extra={
-          <Button type="primary" icon={<PlusOutlined />} onClick={() => setModalUsuario(true)}>
-            Nuevo usuario
-          </Button>
-        }
+        width={420}
+        title={null}
+        styles={{ body: { padding: 0 } }}
       >
-        <Table
-          dataSource={usuarios} columns={columnsUsuarios}
-          rowKey="pk" loading={loadingUsuarios} pagination={false} size="small"
-        />
+        {/* Header del drawer */}
+        {inmoSeleccionada && (
+          <div style={{ padding: '24px 24px 16px', borderBottom: '1px solid #f0f0f0' }}>
+            <div style={{ height: 4, background: color, borderRadius: 2, marginBottom: 16 }} />
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+                <Avatar size={48} style={{ background: `${color}20`, color, fontWeight: 700, fontSize: 20 }}>
+                  {inmoSeleccionada.nombre.charAt(0).toUpperCase()}
+                </Avatar>
+                <div>
+                  <Text strong style={{ fontSize: 16, display: 'block' }}>{inmoSeleccionada.nombre}</Text>
+                  <Text type="secondary" style={{ fontSize: 12 }}>{usuarios.length} usuario{usuarios.length !== 1 ? 's' : ''}</Text>
+                </div>
+              </div>
+              <Button type="primary" size="small" icon={<PlusOutlined />} onClick={() => setModalUsuario(true)}>
+                Nuevo usuario
+              </Button>
+            </div>
+            {inmoSeleccionada.correos?.length > 0 && (
+              <div style={{ marginTop: 12, display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+                <MailOutlined style={{ color: '#aaa', fontSize: 12 }} />
+                {inmoSeleccionada.correos.map(c => (
+                  <Tag key={c} style={{ margin: 0, fontSize: 11 }}>{c}</Tag>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Lista de usuarios */}
+        <div style={{ padding: '12px 24px' }}>
+          {loadingUsuarios ? (
+            <div style={{ textAlign: 'center', padding: 40 }}>
+              <Text type="secondary">Cargando usuarios...</Text>
+            </div>
+          ) : usuarios.length === 0 ? (
+            <div style={{ textAlign: 'center', padding: 40 }}>
+              <UserOutlined style={{ fontSize: 36, color: '#d9d9d9', marginBottom: 8 }} />
+              <div><Text type="secondary">No hay usuarios registrados</Text></div>
+            </div>
+          ) : (
+            usuarios.map(u => (
+              <div key={u.pk} style={{
+                display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                padding: '12px 0', borderBottom: '1px solid #f5f5f5',
+              }}>
+                <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+                  <Avatar size={36} style={{ background: u.activo ? `${color}20` : '#f5f5f5', color: u.activo ? color : '#aaa', fontWeight: 600 }}>
+                    {(u.nombre || u.cognito_username).charAt(0).toUpperCase()}
+                  </Avatar>
+                  <div>
+                    <Text strong style={{ fontSize: 13, display: 'block' }}>{u.nombre || u.cognito_username}</Text>
+                    <Text type="secondary" style={{ fontSize: 11 }}>{u.cognito_username}</Text>
+                  </div>
+                </div>
+                <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                  <Badge status={u.activo ? 'success' : 'error'} />
+                  <Popconfirm
+                    title={u.activo ? '¿Deshabilitar?' : '¿Habilitar?'}
+                    okText="Sí" cancelText="No"
+                    onConfirm={() => handleToggleUsuario(u)}
+                  >
+                    <Tooltip title={u.activo ? 'Deshabilitar' : 'Habilitar'}>
+                      <Button size="small" type="text" danger={u.activo}
+                        icon={u.activo ? <StopOutlined /> : <CheckOutlined />} />
+                    </Tooltip>
+                  </Popconfirm>
+                  <Popconfirm title="¿Eliminar usuario?" okText="Sí" cancelText="No" okButtonProps={{ danger: true }}
+                    onConfirm={() => handleEliminarUsuario(u)}>
+                    <Tooltip title="Eliminar">
+                      <Button size="small" type="text" danger icon={<DeleteOutlined />} />
+                    </Tooltip>
+                  </Popconfirm>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
       </Drawer>
 
       {/* Modal nuevo usuario */}

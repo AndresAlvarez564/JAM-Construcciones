@@ -11,11 +11,14 @@ export const getProyecto = (proyectoId: string): Promise<Proyecto> =>
 export const crearProyecto = (data: { nombre: string; descripcion?: string }): Promise<Proyecto> =>
   apiPost<Proyecto>('/admin/proyectos', data);
 
-export const actualizarProyecto = (proyectoId: string, data: { nombre?: string; descripcion?: string }): Promise<void> =>
+export const actualizarProyecto = (proyectoId: string, data: { nombre?: string; descripcion?: string; imagen_url?: string }): Promise<void> =>
   apiPut(`/admin/proyectos/${proyectoId}`, data);
 
 export const eliminarProyecto = (proyectoId: string): Promise<void> =>
   apiDelete(`/admin/proyectos/${proyectoId}`);
+
+export const getPresignedImagenProyecto = (proyectoId: string): Promise<{ upload_url: string; public_url: string; key: string }> =>
+  apiPost(`/admin/proyectos/${proyectoId}/imagen`, {});
 
 // Etapas
 export const getEtapas = (proyectoId: string): Promise<Etapa[]> =>

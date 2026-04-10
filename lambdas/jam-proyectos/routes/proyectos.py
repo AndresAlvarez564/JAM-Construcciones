@@ -8,6 +8,9 @@ from utils.response import ok, created, bad_request, not_found
 from utils.helpers import now
 
 inventario = boto3.resource('dynamodb').Table(os.environ['INVENTARIO_TABLE'])
+s3_client = boto3.client('s3')
+ASSETS_BUCKET = os.environ.get('ASSETS_BUCKET', '')
+CLOUDFRONT_URL = os.environ.get('CLOUDFRONT_URL', '')
 
 
 def listar(event):
@@ -61,6 +64,9 @@ def actualizar(proyecto_id, event):
     if 'descripcion' in body:
         values[':desc'] = body['descripcion']
         updates.append('descripcion = :desc')
+    if 'imagen_url' in body:
+        values[':img'] = body['imagen_url']
+        updates.append('imagen_url = :img')
 
     if not updates:
         return bad_request('No hay campos para actualizar')
@@ -98,3 +104,31 @@ def eliminar(proyecto_id):
         raise
 
 
+
+
+def presigned_imagen(proyecto_id):
+    """Genera una presigned URL para subir imagen de portada del proyecto a S3."""
+    if not ASSETS_BUCKET:
+        return bad_request('ASSETS_BUCKET no configurado')
+
+    ext = 'jpg'
+    key = f'assets/proyectos/{proyecto_id}/portada.{ext}'
+
+    presigned = s3_client.generate_presigned_url(
+        'put_object',
+        Params={
+            'Bucket': ASSETS_BUCKET,
+            'Key': key,
+            'ContentType': 'image/jpeg',
+        },
+        ExpiresIn=300,  # 5 minutos
+    )
+
+    # URL pública vía CloudFront
+    public_url = f'{CLOUDFRONT_URL}/{key}'
+
+    return ok({
+        'upload_url': presigned,
+        'public_url': public_url,
+        'key': key,
+    })

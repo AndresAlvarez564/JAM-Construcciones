@@ -15,6 +15,7 @@ entre corredores y garantizando la liberación automática del inventario.
 - Restricción de re-bloqueo por la misma inmobiliaria antes de 24h
 - Liberación automática vía EventBridge Scheduler
 - Endpoints administrativos para liberar o extender bloqueos
+- El response de `GET /proyectos/{id}/unidades` debe incluir `fecha_liberacion` y `tiempo_restante` (segundos) para unidades `bloqueada` — esto alimenta el timer visual de TK-03
 
 ### Eventos / Mensajería
 - SQS: cola `jam-notificaciones-queue` para emails de bloqueo y alerta de vencimiento
@@ -159,4 +160,5 @@ Ambas acciones quedan registradas en el historial con el admin que las ejecutó.
 
 - `ConditionExpression` en DynamoDB es la única garantía real contra race conditions
 - EventBridge Scheduler (no EventBridge Rules) para tareas one-time por bloqueo
+- Al completar TK-04, el endpoint `GET /proyectos/{id}/unidades` debe retornar `fecha_liberacion` y `tiempo_restante` para que TK-03 pueda mostrar el timer visual
 - Depende de: TK-01 (auth), TK-02 (modelo de datos)
