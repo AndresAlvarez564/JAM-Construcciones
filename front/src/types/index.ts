@@ -64,6 +64,23 @@ export interface Unidad {
   metraje: number;
   precio: number;
   estado: string;
+  bloqueado_por?: string;
+  fecha_bloqueo?: string;
+  fecha_liberacion?: string;
+  tiempo_restante?: number;
   creado_en: string;
   actualizado_en: string;
+}
+
+export interface Bloqueo {
+  pk: string;
+  sk: string;
+  unidad_id: string;
+  id_unidad?: string;
+  proyecto_id: string;
+  bloqueado_por: string;
+  fecha_bloqueo: string;
+  fecha_liberacion: string;
+  tiempo_restante?: number;
+  estado: string;
 }

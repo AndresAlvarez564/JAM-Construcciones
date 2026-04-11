@@ -2,6 +2,7 @@ import { Avatar, Typography } from 'antd';
 import {
   AppstoreOutlined, TeamOutlined, DashboardOutlined,
   BarChartOutlined, BankOutlined, UserOutlined, PoweroffOutlined,
+  LockOutlined,
 } from '@ant-design/icons';
 import { useNavigate, useLocation } from 'react-router-dom';
 import useAuth from '../../hooks/useAuth';
@@ -52,6 +53,7 @@ const Sidebar = ({ onSelect }: Props) => {
       title: 'Administración',
       items: [
         { key: '/inmobiliarias', icon: <BankOutlined />, label: 'Inmobiliarias' },
+        { key: '/bloqueos', icon: <LockOutlined />, label: 'Bloqueos' },
         { key: '/sistema/usuarios', icon: <UserOutlined />, label: 'Usuarios' },
       ],
     }] : []),

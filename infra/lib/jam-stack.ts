@@ -7,6 +7,7 @@ import * as s3 from 'aws-cdk-lib/aws-s3';
 import * as cloudfront from 'aws-cdk-lib/aws-cloudfront';
 import * as origins from 'aws-cdk-lib/aws-cloudfront-origins';
 import * as iam from 'aws-cdk-lib/aws-iam';
+import * as sqs from 'aws-cdk-lib/aws-sqs';
 import { Construct } from 'constructs';
 import * as path from 'path';
 
@@ -174,6 +175,65 @@ export class JamStack extends cdk.Stack {
     inventarioTable.grantReadWriteData(proyectosLambda);
     usuariosTable.grantReadData(proyectosLambda);
 
+    // ─── DYNAMODB jam-historial-bloqueos ─────────────────────────────────────
+
+    const historialTable = new dynamodb.Table(this, 'JamHistorialBloqueosTable', {
+      tableName: 'jam-historial-bloqueos',
+      partitionKey: { name: 'pk', type: dynamodb.AttributeType.STRING },
+      sortKey: { name: 'sk', type: dynamodb.AttributeType.STRING },
+      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
+      removalPolicy: cdk.RemovalPolicy.RETAIN,
+    });
+
+    // ─── SQS jam-notificaciones-queue ────────────────────────────────────────
+
+    const notificacionesQueue = new sqs.Queue(this, 'JamNotificacionesQueue', {
+      queueName: 'jam-notificaciones-queue',
+      retentionPeriod: cdk.Duration.days(7),
+      visibilityTimeout: cdk.Duration.seconds(60),
+    });
+
+    // ─── IAM Role para EventBridge Scheduler ─────────────────────────────────
+
+    const schedulerRole = new iam.Role(this, 'JamSchedulerRole', {
+      roleName: 'jam-scheduler-role',
+      assumedBy: new iam.ServicePrincipal('scheduler.amazonaws.com'),
+    });
+
+    // ─── LAMBDA jam-bloqueos ─────────────────────────────────────────────────
+
+    // Construir el ARN manualmente para evitar dependencia circular
+    const bloqueosLambdaArn = `arn:aws:lambda:${this.region}:${this.account}:function:jam-bloqueos`;
+
+    const bloqueosLambda = new lambda.Function(this, 'JamBloqueosLambda', {
+      functionName: 'jam-bloqueos',
+      runtime: lambda.Runtime.PYTHON_3_12,
+      handler: 'handler.handler',
+      code: lambda.Code.fromAsset(path.join(__dirname, '../../lambdas/jam-bloqueos')),
+      timeout: cdk.Duration.seconds(30),
+      environment: {
+        INVENTARIO_TABLE: inventarioTable.tableName,
+        HISTORIAL_TABLE: historialTable.tableName,
+        SQS_URL: notificacionesQueue.queueUrl,
+        SCHEDULER_ROLE_ARN: schedulerRole.roleArn,
+        BLOQUEOS_LAMBDA_ARN: bloqueosLambdaArn,
+      },
+    });
+
+    inventarioTable.grantReadWriteData(bloqueosLambda);
+    historialTable.grantReadWriteData(bloqueosLambda);
+    notificacionesQueue.grantSendMessages(bloqueosLambda);
+
+    bloqueosLambda.addToRolePolicy(new iam.PolicyStatement({
+      actions: ['scheduler:CreateSchedule', 'scheduler:DeleteSchedule'],
+      resources: ['*'],
+    }));
+
+    schedulerRole.addToPolicy(new iam.PolicyStatement({
+      actions: ['lambda:InvokeFunction'],
+      resources: [bloqueosLambdaArn],
+    }));
+
     // ─── API GATEWAY ────────────────────────────────────────────────────────
 
     const api = new apigateway.RestApi(this, 'JamApi', {
@@ -195,6 +255,7 @@ export class JamStack extends cdk.Stack {
 
     const authLambdaIntegration = new apigateway.LambdaIntegration(authLambda);
     const proyectosLambdaIntegration = new apigateway.LambdaIntegration(proyectosLambda);
+    const bloqueosLambdaIntegration = new apigateway.LambdaIntegration(bloqueosLambda);
 
     // /auth
     const authResource = api.root.addResource('auth');
@@ -336,6 +397,29 @@ export class JamStack extends cdk.Stack {
       authorizationType: apigateway.AuthorizationType.COGNITO,
     });
     adminUsuarioResource.addResource('habilitar').addMethod('PUT', authLambdaIntegration, {
+      authorizer: cognitoAuthorizer,
+      authorizationType: apigateway.AuthorizationType.COGNITO,
+    });
+
+    // /bloqueos
+    const bloqueosResource = api.root.addResource('bloqueos');
+    bloqueosResource.addMethod('POST', bloqueosLambdaIntegration, {
+      authorizer: cognitoAuthorizer,
+      authorizationType: apigateway.AuthorizationType.COGNITO,
+    });
+    bloqueosResource.addResource('activos').addMethod('GET', bloqueosLambdaIntegration, {
+      authorizer: cognitoAuthorizer,
+      authorizationType: apigateway.AuthorizationType.COGNITO,
+    });
+
+    // /admin/bloqueos
+    const adminBloqueosResource = adminResource.addResource('bloqueos');
+    const adminBloqueoResource = adminBloqueosResource.addResource('{unidad_id}');
+    adminBloqueoResource.addMethod('DELETE', bloqueosLambdaIntegration, {
+      authorizer: cognitoAuthorizer,
+      authorizationType: apigateway.AuthorizationType.COGNITO,
+    });
+    adminBloqueoResource.addResource('extender').addMethod('PUT', bloqueosLambdaIntegration, {
       authorizer: cognitoAuthorizer,
       authorizationType: apigateway.AuthorizationType.COGNITO,
     });

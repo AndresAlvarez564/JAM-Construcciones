@@ -10,6 +10,7 @@ import ClientesPage from './pages/clientes/ClientesPage';
 import InmobiliariasPage from './pages/inmobiliarias/InmobiliariasPage';
 import UsuariosSistemaPage from './pages/sistema/UsuariosSistemaPage';
 import ReportesPage from './pages/reportes/ReportesPage';
+import BloqueosPage from './pages/bloqueos/BloqueosPage';
 
 const App = () => (
   <BrowserRouter>
@@ -35,6 +36,14 @@ const App = () => (
             element={
               <ProtectedRoute roles={['admin']}>
                 <InmobiliariasPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="bloqueos"
+            element={
+              <ProtectedRoute roles={['admin']}>
+                <BloqueosPage />
               </ProtectedRoute>
             }
           />

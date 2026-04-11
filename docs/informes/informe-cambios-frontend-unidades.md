@@ -87,3 +87,27 @@ Se completó el TK-03 con mejoras visuales y funcionales en el módulo de invent
 ## Pendiente
 
 - Timer de bloqueo en tiempo real (depende de TK-04: requiere `fecha_liberacion` en el response de unidades).
+
+---
+
+## Corrección — MFA por rol (Abril 2026)
+
+**Problema detectado:** El MFA dejó de pedirse al hacer login. Se confirmó vía CloudTrail que los deploys de CDK (`AWSCloudFormation`) estaban sobreescribiendo la configuración de MFA del User Pool, ya que el CDK tenía `mfa: OPTIONAL` pero no incluía `mfaConfiguration` en el `UpdateUserPool`, lo que hacía que Cognito lo reseteara.
+
+**Solución implementada:** En lugar de forzar MFA a nivel de Cognito para todos los usuarios, se implementó la lógica en el frontend para exigir MFA solo a usuarios internos (`admin`, `coordinador`, `supervisor`), dejando a las inmobiliarias sin ese requisito.
+
+### Cambios
+
+| Archivo | Cambio |
+|---------|--------|
+| `infra/lib/jam-stack.ts` | `mfa` vuelve a `OPTIONAL` (controlado por lógica de frontend) |
+| `front/src/services/auth.service.ts` | Nueva función `getRolFromSession()` que lee `cognito:groups` del token JWT. Nuevo tipo `ok_inmobiliaria` en `LoginResult` |
+| `front/src/pages/auth/LoginPage.tsx` | Caso `ok`: si es inmobiliaria entra directo, si es interno redirige a `/mfa-setup` obligatorio |
+
+### Flujo resultante
+
+| Rol | Comportamiento al login |
+|-----|------------------------|
+| `admin`, `coordinador`, `supervisor` con MFA | Challenge TOTP normal |
+| `admin`, `coordinador`, `supervisor` sin MFA | Redirige a `/mfa-setup` obligatorio |
+| `inmobiliaria` | Entra directo al dashboard sin MFA |

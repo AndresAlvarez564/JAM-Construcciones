@@ -3,12 +3,25 @@ import uuid
 import boto3
 import os
 from decimal import Decimal
+from datetime import datetime, timezone
 from boto3.dynamodb.conditions import Key
 from botocore.exceptions import ClientError
 from utils.response import ok, created, bad_request, not_found
 from utils.helpers import now
 
 inventario = boto3.resource('dynamodb').Table(os.environ['INVENTARIO_TABLE'])
+
+
+def _enrich_bloqueo(item):
+    """Agrega tiempo_restante (segundos) si la unidad está bloqueada."""
+    if item.get('estado') == 'bloqueada' and item.get('fecha_liberacion'):
+        try:
+            dt_lib = datetime.fromisoformat(item['fecha_liberacion'].replace('Z', '+00:00'))
+            restante = int((dt_lib - datetime.now(timezone.utc)).total_seconds())
+            item['tiempo_restante'] = max(restante, 0)
+        except (ValueError, TypeError):
+            item['tiempo_restante'] = 0
+    return item
 
 
 def listar(proyecto_id, event, rol):
@@ -44,6 +57,7 @@ def listar(proyecto_id, event, rol):
             item.pop('bloqueado_por', None)
             item.pop('cliente_id', None)
 
+    items = [_enrich_bloqueo(i) for i in items]
     return ok(items)
 
 
@@ -59,7 +73,7 @@ def detalle(proyecto_id, unidad_id, rol):
         item.pop('bloqueado_por', None)
         item.pop('cliente_id', None)
 
-    return ok(item)
+    return ok(_enrich_bloqueo(item))
 
 
 def crear(proyecto_id, event):

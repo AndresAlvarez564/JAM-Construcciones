@@ -8,8 +8,18 @@ import config from '../config';
 
 export type LoginResult =
   | { type: 'ok' }
+  | { type: 'ok_inmobiliaria' }
   | { type: 'mfa_code' }
   | { type: 'mfa_setup'; secret: string };
+
+const ROLES_INTERNOS = ['admin', 'coordinador', 'supervisor'];
+
+const getRolFromSession = async (): Promise<string> => {
+  const session = await fetchAuthSession();
+  const groups: string[] = (session.tokens?.idToken?.payload?.['cognito:groups'] as string[]) ?? [];
+  if (groups.some(g => ROLES_INTERNOS.includes(g))) return 'interno';
+  return 'inmobiliaria';
+};
 
 export const login = async (username: string, password: string): Promise<LoginResult> => {
   try { await signOut(); } catch { /* ok */ }
@@ -25,12 +35,14 @@ export const login = async (username: string, password: string): Promise<LoginRe
   }
 
   if (nextStep.signInStep === 'CONTINUE_SIGN_IN_WITH_TOTP_SETUP') {
-    // El secret viene en el nextStep, no hay que llamar setUpTOTP
     const secret = nextStep.totpSetupDetails.sharedSecret;
     return { type: 'mfa_setup', secret };
   }
 
-  return { type: 'ok' };
+  // Login sin challenge — verificar si es interno o inmobiliaria
+  const rol = await getRolFromSession();
+  if (rol === 'inmobiliaria') return { type: 'ok_inmobiliaria' };
+  return { type: 'ok' }; // interno sin MFA configurado → forzar setup
 };
 
 // Confirmar código MFA (ya configurado) o activar MFA setup — mismo método

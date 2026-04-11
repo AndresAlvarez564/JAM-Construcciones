@@ -41,9 +41,13 @@ export default function LoginPage() {
         const uri = `otpauth://totp/JAM:${encodeURIComponent(username)}?secret=${result.secret}&issuer=JAM%20Construcciones`;
         setQrUrl(await QRCode.toDataURL(uri));
         setStep('mfa_setup'); setLoading(false);
-      } else {
+      } else if (result.type === 'ok_inmobiliaria') {
+        // Inmobiliaria: entra directo sin MFA
         await refetch();
         navigate('/dashboard');
+      } else {
+        // Interno sin MFA configurado: forzar setup
+        navigate('/mfa-setup');
       }
     } catch (e) {
       console.error('LOGIN ERROR:', e);
