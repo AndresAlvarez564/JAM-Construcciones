@@ -46,6 +46,19 @@ def bloquear(event):
     # Resolver nombre real de la inmobiliaria
     inmo_id, inmo_nombre = _get_inmobiliaria_info(inmobiliaria_id)
 
+    # Resolver nombre legible de la unidad y su torre
+    unidad_item = inventario.get_item(
+        Key={'pk': f'PROYECTO#{proyecto_id}', 'sk': f'UNIDAD#{unidad_id}'}
+    ).get('Item', {})
+    unidad_nombre = unidad_item.get('id_unidad') or unidad_id
+    torre_id = unidad_item.get('torre_id')
+    torre_nombre = None
+    if torre_id:
+        torre_item = inventario.get_item(
+            Key={'pk': f'PROYECTO#{proyecto_id}', 'sk': f'TORRE#{torre_id}'}
+        ).get('Item', {})
+        torre_nombre = torre_item.get('nombre')
+
     # Verificar restricción de re-bloqueo (misma inmo, misma unidad, < 24h)
     ts_limite = (datetime.now(timezone.utc) - timedelta(hours=HORAS_REBLOQUEO)).isoformat()
     hist = historial.query(
@@ -91,6 +104,10 @@ def bloquear(event):
         'pk': f'UNIDAD#{unidad_id}',
         'sk': f'BLOQUEO#{ts_bloqueo}',
         'proyecto_id': proyecto_id,
+        'unidad_id': unidad_id,
+        'unidad_nombre': unidad_nombre,
+        'torre_id': torre_id,
+        'torre_nombre': torre_nombre,
         'inmobiliaria_id': inmo_id,
         'inmobiliaria_nombre': inmo_nombre,
         'fecha_bloqueo': ts_bloqueo,
@@ -129,10 +146,29 @@ def listar_activos(event):
         KeyConditionExpression=Key('estado').eq('bloqueada'),
     )
     items = result.get('Items', [])
-    # Extraer proyecto_id del pk (PROYECTO#<id>) si no está como campo suelto
+
     for item in items:
         if not item.get('proyecto_id') and item.get('pk', '').startswith('PROYECTO#'):
             item['proyecto_id'] = item['pk'].replace('PROYECTO#', '')
         if not item.get('unidad_id') and item.get('sk', '').startswith('UNIDAD#'):
             item['unidad_id'] = item['sk'].replace('UNIDAD#', '')
+
+    # Resolver nombres de torres con batch_get_item
+    keys_torres = [
+        {'pk': item['pk'], 'sk': f'TORRE#{item["torre_id"]}'}
+        for item in items if item.get('torre_id') and item.get('pk')
+    ]
+    if keys_torres:
+        # batch_get_item acepta máximo 100 keys
+        torre_map = {}
+        for i in range(0, len(keys_torres), 100):
+            batch = inventario.meta.client.batch_get_item(
+                RequestItems={inventario.name: {'Keys': keys_torres[i:i+100]}}
+            )
+            for t in batch.get('Responses', {}).get(inventario.name, []):
+                torre_map[t['sk']] = t.get('nombre')
+        for item in items:
+            if item.get('torre_id'):
+                item['torre_nombre'] = torre_map.get(f'TORRE#{item["torre_id"]}')
+
     return ok(items)

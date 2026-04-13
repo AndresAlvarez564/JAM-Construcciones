@@ -131,7 +131,7 @@ const BloqueosPage = () => {
       dataIndex: 'id_unidad',
       key: 'id_unidad',
       render: (v: string, r: Bloqueo) => (
-        <Text strong>{v || r.unidad_id}</Text>
+        <Text strong>{[r.torre_nombre, v || r.unidad_id].filter(Boolean).join(' · ')}</Text>
       ),
     },
     {
@@ -246,7 +246,9 @@ const BloqueosPage = () => {
                   pagination={{ pageSize: 20 }}
                   locale={{ emptyText: 'No hay registros en el historial' }}
                   columns={[
-                    { title: 'Unidad', dataIndex: 'unidad_id', key: 'unidad_id', render: (v: string) => <Text strong>{v}</Text> },
+                    { title: 'Unidad', dataIndex: 'unidad_id', key: 'unidad_id', render: (v: string, r: any) => (
+                      <Text strong>{[r.torre_nombre, r.unidad_nombre ?? v].filter(Boolean).join(' · ')}</Text>
+                    )},
                     { title: 'Proyecto', dataIndex: 'proyecto_id', key: 'proyecto_id', render: (v: string) => proyectoNombre(v) },
                     { title: 'Inmobiliaria', dataIndex: 'inmobiliaria_id', key: 'inmobiliaria_id', render: (v: string, r: any) => {
                       const inmo = inmobiliarias.find(i => i.pk === v || i.pk === `INMOBILIARIA#${v}`);
