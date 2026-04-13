@@ -111,3 +111,53 @@ Se completó el TK-03 con mejoras visuales y funcionales en el módulo de invent
 | `admin`, `coordinador`, `supervisor` con MFA | Challenge TOTP normal |
 | `admin`, `coordinador`, `supervisor` sin MFA | Redirige a `/mfa-setup` obligatorio |
 | `inmobiliaria` | Entra directo al dashboard sin MFA |
+
+---
+
+## TK-04 — Bloqueo de unidades (Abril 2026)
+
+**Área:** Backend · Frontend · Infraestructura
+
+### Resumen
+
+Se implementó el flujo completo de bloqueo de unidades. Nueva lambda `jam-bloqueos`, tabla `jam-historial-bloqueos`, cola SQS `jam-notificaciones-queue`, IAM role para EventBridge Scheduler, y frontend completo con botón de bloqueo, timer visual e historial.
+
+### Backend
+
+- Nueva lambda `jam-bloqueos` con endpoints: `POST /bloqueos`, `GET /bloqueos/activos`, `GET /admin/bloqueos/historial`, `DELETE /admin/bloqueos/{id}`, `PUT /admin/bloqueos/{id}/extender`
+- Control de concurrencia con `ConditionExpression` en DynamoDB
+- Restricción de re-bloqueo 24h consultando historial
+- EventBridge Scheduler: 2 schedules one-time por bloqueo (48h liberación, 43h alerta)
+- Notificaciones vía SQS en cada evento del ciclo de vida
+- Historial guarda nombre de inmobiliaria y nombre del admin que liberó
+- `jam-proyectos/routes/unidades.py` modificado para incluir `fecha_liberacion` y `tiempo_restante` en unidades bloqueadas
+
+### Frontend
+
+- Botón "Bloquear" en tabla de unidades para rol `inmobiliaria` (solo unidades disponibles)
+- Retry automático en cold start de Lambda
+- Timer de tiempo restante en columna Estado (verde/amarillo)
+- Nueva página `/bloqueos` con dos pestañas: Activos e Historial
+- Item "Bloqueos" agregado al sidebar en sección Administración
+
+### Infraestructura
+
+- Tabla DynamoDB `jam-historial-bloqueos`
+- Cola SQS `jam-notificaciones-queue`
+- IAM Role `jam-scheduler-role` para EventBridge
+- Lambda `jam-bloqueos` con permisos: inventario, historial, usuarios (read), SQS, Scheduler, PassRole
+- Rutas API Gateway: `/bloqueos`, `/bloqueos/activos`, `/admin/bloqueos/historial`, `/admin/bloqueos/{id}`, `/admin/bloqueos/{id}/extender`
+
+### Archivos modificados
+
+| Archivo | Cambio |
+|---------|--------|
+| `lambdas/jam-bloqueos/*` | Creado completo |
+| `lambdas/jam-proyectos/routes/unidades.py` | `fecha_liberacion` + `tiempo_restante` |
+| `front/src/pages/inventario/InventarioPage.tsx` | Botón bloquear + timer |
+| `front/src/pages/bloqueos/BloqueosPage.tsx` | Creado |
+| `front/src/services/bloqueos.service.ts` | Creado |
+| `front/src/types/index.ts` | `Bloqueo`, `HistorialBloqueo` |
+| `front/src/App.tsx` | Ruta `/bloqueos` |
+| `front/src/components/layout/Sidebar.tsx` | Item Bloqueos |
+| `infra/lib/jam-stack.ts` | Todos los recursos nuevos |

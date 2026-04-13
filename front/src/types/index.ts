@@ -72,6 +72,18 @@ export interface Unidad {
   actualizado_en: string;
 }
 
+export interface HistorialBloqueo {
+  pk: string;
+  sk: string;
+  unidad_id: string;
+  proyecto_id: string;
+  inmobiliaria_id: string;
+  fecha_bloqueo: string;
+  fecha_liberacion: string;
+  motivo_liberacion?: string;
+  liberado_por?: string;
+}
+
 export interface Bloqueo {
   pk: string;
   sk: string;

@@ -1,14 +1,16 @@
 import { useEffect, useState, useCallback } from 'react';
 import {
   Typography, Table, Tag, Button, Space, Popconfirm,
-  Modal, Form, InputNumber, Input, message, Tooltip, Badge,
+  Modal, Form, InputNumber, Input, message, Tooltip, Badge, Tabs,
 } from 'antd';
 import {
-  UnlockOutlined, ClockCircleOutlined, ReloadOutlined, FieldTimeOutlined,
+  UnlockOutlined, ClockCircleOutlined, ReloadOutlined, FieldTimeOutlined, HistoryOutlined,
 } from '@ant-design/icons';
-import { getBloquesActivos, liberarBloqueo, extenderBloqueo } from '../../services/bloqueos.service';
+import { getBloquesActivos, liberarBloqueo, extenderBloqueo, getHistorialBloqueos } from '../../services/bloqueos.service';
 import { getProyectos } from '../../services/proyectos.service';
-import type { Bloqueo, Proyecto } from '../../types';
+import { getInmobiliarias } from '../../services/inmobiliarias.service';
+import type { Inmobiliaria } from '../../services/inmobiliarias.service';
+import type { Bloqueo, Proyecto, HistorialBloqueo } from '../../types';
 
 const { Title, Text } = Typography;
 
@@ -28,7 +30,10 @@ const tiempoColor = (segundos?: number) => {
 const BloqueosPage = () => {
   const [bloqueos, setBloqueos] = useState<Bloqueo[]>([]);
   const [proyectos, setProyectos] = useState<Proyecto[]>([]);
+  const [historial, setHistorial] = useState<HistorialBloqueo[]>([]);
+  const [inmobiliarias, setInmobiliarias] = useState<Inmobiliaria[]>([]);
   const [loading, setLoading] = useState(false);
+  const [loadingHistorial, setLoadingHistorial] = useState(false);
   const [modalExtender, setModalExtender] = useState(false);
   const [bloqueoSeleccionado, setBloqueoSeleccionado] = useState<Bloqueo | null>(null);
   const [form] = Form.useForm();
@@ -54,6 +59,19 @@ const BloqueosPage = () => {
   }, []);
 
   useEffect(() => { cargar(); }, [cargar]);
+
+  const cargarHistorial = useCallback(async () => {
+    setLoadingHistorial(true);
+    try {
+      const [h, inmos] = await Promise.all([getHistorialBloqueos(), getInmobiliarias()]);
+      setHistorial(h);
+      setInmobiliarias(inmos);
+    } catch {
+      message.error('Error al cargar historial');
+    } finally {
+      setLoadingHistorial(false);
+    }
+  }, []);
 
   const handleLiberar = async (b: Bloqueo) => {
     try {
@@ -171,24 +189,65 @@ const BloqueosPage = () => {
   return (
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
-        <div>
-          <Title level={4} style={{ margin: 0 }}>Bloqueos activos</Title>
-          <Text type="secondary" style={{ fontSize: 13 }}>
-            {bloqueos.length} unidad{bloqueos.length !== 1 ? 'es' : ''} bloqueada{bloqueos.length !== 1 ? 's' : ''}
-          </Text>
-        </div>
+        <Title level={4} style={{ margin: 0 }}>Bloqueos</Title>
         <Button icon={<ReloadOutlined />} onClick={cargar} loading={loading}>
           Actualizar
         </Button>
       </div>
 
-      <Table
-        dataSource={bloqueos}
-        columns={columns}
-        rowKey="unidad_id"
-        loading={loading}
-        pagination={{ pageSize: 20 }}
-        locale={{ emptyText: 'No hay bloqueos activos' }}
+      <Tabs
+        defaultActiveKey="activos"
+        onChange={key => { if (key === 'historial') cargarHistorial(); }}
+        items={[
+          {
+            key: 'activos',
+            label: `Activos (${bloqueos.length})`,
+            children: (
+              <Table
+                dataSource={bloqueos}
+                columns={columns}
+                rowKey="unidad_id"
+                loading={loading}
+                pagination={{ pageSize: 20 }}
+                locale={{ emptyText: 'No hay bloqueos activos' }}
+              />
+            ),
+          },
+          {
+            key: 'historial',
+            label: <span><HistoryOutlined /> Historial</span>,
+            children: (
+              <Table
+                dataSource={historial}
+                rowKey="sk"
+                loading={loadingHistorial}
+                pagination={{ pageSize: 20 }}
+                locale={{ emptyText: 'No hay registros en el historial' }}
+                columns={[
+                  { title: 'Unidad', dataIndex: 'unidad_id', key: 'unidad_id', render: (v: string) => <Text strong>{v}</Text> },
+                  { title: 'Proyecto', dataIndex: 'proyecto_id', key: 'proyecto_id', render: (v: string) => proyectoNombre(v) },
+                  { title: 'Inmobiliaria', dataIndex: 'inmobiliaria_id', key: 'inmobiliaria_id', render: (v: string, r: any) => {
+                    const inmo = inmobiliarias.find(i => i.pk === v || i.pk === `INMOBILIARIA#${v}`);
+                    return <Tag>{r.inmobiliaria_nombre ?? inmo?.nombre ?? v}</Tag>;
+                  }},
+                  { title: 'Bloqueado', dataIndex: 'fecha_bloqueo', key: 'fecha_bloqueo', render: (v: string) => new Date(v).toLocaleString('es-VE') },
+                  { title: 'Liberado', dataIndex: 'fecha_liberacion', key: 'fecha_liberacion', render: (v: string) => v ? new Date(v).toLocaleString('es-VE') : '—' },
+                  {
+                    title: 'Motivo',
+                    dataIndex: 'motivo_liberacion',
+                    key: 'motivo_liberacion',
+                    render: (v: string) => {
+                      if (!v) return <Tag color="warning">Activo</Tag>;
+                      const cfg: Record<string, string> = { automatica: 'success', manual: 'blue', venta: 'purple' };
+                      return <Tag color={cfg[v] ?? 'default'}>{v}</Tag>;
+                    },
+                  },
+                  { title: 'Liberado por', dataIndex: 'liberado_por', key: 'liberado_por', render: (v: string) => v ?? '—' },
+                ]}
+              />
+            ),
+          },
+        ]}
       />
 
       <Modal

@@ -11,18 +11,18 @@ métricas comerciales.
 
 ## Módulos del sistema
 
-| Módulo | Descripción | Ticket |
-|--------|-------------|--------|
-| Autenticación y usuarios | Login, roles, inmobiliarias, acceso por proyecto | TK-01 |
-| Modelo de datos base | Proyectos, etapas, torres, unidades, CRUD completo | TK-02 |
-| Visualización de inventario | Tabla con filtros, visibilidad por rol, timer de bloqueo | TK-03 |
-| Bloqueo de unidades | 48h, concurrencia, liberación automática, historial | TK-04 |
-| Captación de clientes | Registro, exclusividad 3 meses por proyecto, vencimiento | TK-05 |
-| Estatus comerciales y CRM | Flujo de venta, notificaciones, integración Kommo | TK-06 |
-| Carga masiva Excel | Importación de inventario por archivo .xlsx | TK-07 |
-| Notificaciones y auditoría | Email + WhatsApp, SQS, trazabilidad de eventos | TK-08 |
-| QA y estabilización | Pruebas funcionales, concurrencia, checklist producción | TK-09 |
-| Despliegue a producción | Infraestructura prod, smoke test, soporte inicial | TK-10 |
+| Módulo | Descripción | Ticket | Estado |
+|--------|-------------|--------|--------|
+| Autenticación y usuarios | Login, roles, inmobiliarias, acceso por proyecto | TK-01 | ✅ Completado |
+| Modelo de datos base | Proyectos, etapas, torres, unidades, CRUD completo | TK-02 | ✅ Completado |
+| Visualización de inventario | Tabla con filtros, visibilidad por rol, timer de bloqueo | TK-03 | ✅ Completado |
+| Bloqueo de unidades | 48h, concurrencia, liberación automática, historial | TK-04 | ✅ Completado |
+| Captación de clientes | Registro, exclusividad 3 meses por proyecto, vencimiento | TK-05 | 🔄 Pendiente |
+| Estatus comerciales y CRM | Flujo de venta, notificaciones, integración Kommo | TK-06 | 🔄 Pendiente |
+| Carga masiva Excel | Importación de inventario por archivo .xlsx | TK-07 | 🔄 Pendiente |
+| Notificaciones y auditoría | Email + WhatsApp, SQS, trazabilidad de eventos | TK-08 | 🔄 Pendiente |
+| QA y estabilización | Pruebas funcionales, concurrencia, checklist producción | TK-09 | 🔄 Pendiente |
+| Despliegue a producción | Infraestructura prod, smoke test, soporte inicial | TK-10 | 🔄 Pendiente |
 
 ---
 

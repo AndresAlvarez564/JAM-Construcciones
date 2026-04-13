@@ -217,16 +217,23 @@ export class JamStack extends cdk.Stack {
         SQS_URL: notificacionesQueue.queueUrl,
         SCHEDULER_ROLE_ARN: schedulerRole.roleArn,
         BLOQUEOS_LAMBDA_ARN: bloqueosLambdaArn,
+        USUARIOS_TABLE: usuariosTable.tableName,
       },
     });
 
     inventarioTable.grantReadWriteData(bloqueosLambda);
     historialTable.grantReadWriteData(bloqueosLambda);
+    usuariosTable.grantReadData(bloqueosLambda);
     notificacionesQueue.grantSendMessages(bloqueosLambda);
 
     bloqueosLambda.addToRolePolicy(new iam.PolicyStatement({
       actions: ['scheduler:CreateSchedule', 'scheduler:DeleteSchedule'],
       resources: ['*'],
+    }));
+
+    bloqueosLambda.addToRolePolicy(new iam.PolicyStatement({
+      actions: ['iam:PassRole'],
+      resources: [schedulerRole.roleArn],
     }));
 
     schedulerRole.addToPolicy(new iam.PolicyStatement({
@@ -414,6 +421,10 @@ export class JamStack extends cdk.Stack {
 
     // /admin/bloqueos
     const adminBloqueosResource = adminResource.addResource('bloqueos');
+    adminBloqueosResource.addResource('historial').addMethod('GET', bloqueosLambdaIntegration, {
+      authorizer: cognitoAuthorizer,
+      authorizationType: apigateway.AuthorizationType.COGNITO,
+    });
     const adminBloqueoResource = adminBloqueosResource.addResource('{unidad_id}');
     adminBloqueoResource.addMethod('DELETE', bloqueosLambdaIntegration, {
       authorizer: cognitoAuthorizer,

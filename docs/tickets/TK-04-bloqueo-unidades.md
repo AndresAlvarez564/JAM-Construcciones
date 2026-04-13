@@ -146,13 +146,15 @@ Ambas acciones quedan registradas en el historial con el admin que las ejecutó.
 
 ## Criterios de aceptación
 
-- [ ] Una unidad no puede quedar bloqueada por dos corredores al mismo tiempo
-- [ ] El primer request válido gana, los demás reciben 409
-- [ ] La misma inmobiliaria no puede re-bloquear la misma unidad antes de 24h
-- [ ] El bloqueo expira automáticamente a las 48h vía EventBridge
-- [ ] Se envían notificaciones al bloquear y 5h antes de vencer
-- [ ] Admin puede liberar o extender con trazabilidad completa
-- [ ] Todo queda registrado en `jam-historial-bloqueos`
+- [x] Una unidad no puede quedar bloqueada por dos corredores al mismo tiempo
+- [x] El primer request válido gana, los demás reciben 409
+- [x] La misma inmobiliaria no puede re-bloquear la misma unidad antes de 24h
+- [x] El bloqueo expira automáticamente a las 48h vía EventBridge
+- [x] Se envían notificaciones al bloquear y 5h antes de vencer (vía SQS)
+- [x] Admin puede liberar o extender con trazabilidad completa
+- [x] Todo queda registrado en `jam-historial-bloqueos`
+- [x] `GET /proyectos/{id}/unidades` retorna `fecha_liberacion` y `tiempo_restante`
+- [x] Frontend completo: botón bloquear, timer, página de bloqueos activos e historial
 
 ---
 
@@ -160,5 +162,16 @@ Ambas acciones quedan registradas en el historial con el admin que las ejecutó.
 
 - `ConditionExpression` en DynamoDB es la única garantía real contra race conditions
 - EventBridge Scheduler (no EventBridge Rules) para tareas one-time por bloqueo
-- Al completar TK-04, el endpoint `GET /proyectos/{id}/unidades` debe retornar `fecha_liberacion` y `tiempo_restante` para que TK-03 pueda mostrar el timer visual
+- Al completar TK-04, el endpoint `GET /proyectos/{id}/unidades` retorna `fecha_liberacion` y `tiempo_restante` — timer visual funcionando en TK-03
+- La lambda necesita permiso `iam:PassRole` sobre el scheduler role para crear schedules
+- El ARN de la lambda se construye manualmente en CDK para evitar dependencia circular
+- El historial guarda `inmobiliaria_nombre` y el nombre del admin que liberó (resueltos desde `jam-usuarios`)
 - Depende de: TK-01 (auth), TK-02 (modelo de datos)
+
+---
+
+## Estado
+
+**Completado** — Abril 2026
+
+Todo el backend, infraestructura y frontend implementados y probados en producción.

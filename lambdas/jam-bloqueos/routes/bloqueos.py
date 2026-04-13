@@ -11,12 +11,27 @@ from utils import scheduler as sched
 dynamodb = boto3.resource('dynamodb')
 inventario = dynamodb.Table(os.environ['INVENTARIO_TABLE'])
 historial = dynamodb.Table(os.environ['HISTORIAL_TABLE'])
+usuarios = dynamodb.Table(os.environ['USUARIOS_TABLE'])
 sqs = boto3.client('sqs')
 SQS_URL = os.environ.get('SQS_URL', '')
 
 HORAS_BLOQUEO = 48
 HORAS_ALERTA = 43
 HORAS_REBLOQUEO = 24
+
+
+def _get_inmobiliaria_info(sub: str):
+    """Retorna (inmobiliaria_id, inmobiliaria_nombre) dado el sub del usuario."""
+    try:
+        item = usuarios.get_item(
+            Key={'pk': f'USUARIO#{sub}', 'sk': 'METADATA'}
+        ).get('Item', {})
+        inmo_id = item.get('inmobiliaria_id', sub)
+        # Obtener nombre de la inmobiliaria
+        inmo = usuarios.get_item(Key={'pk': inmo_id, 'sk': 'METADATA'}).get('Item', {})
+        return inmo_id, inmo.get('nombre', inmo_id)
+    except Exception:
+        return sub, sub
 
 
 def bloquear(event):
@@ -28,11 +43,14 @@ def bloquear(event):
     if not all([proyecto_id, unidad_id]):
         return bad_request('proyecto_id y unidad_id son requeridos')
 
+    # Resolver nombre real de la inmobiliaria
+    inmo_id, inmo_nombre = _get_inmobiliaria_info(inmobiliaria_id)
+
     # Verificar restricción de re-bloqueo (misma inmo, misma unidad, < 24h)
     ts_limite = (datetime.now(timezone.utc) - timedelta(hours=HORAS_REBLOQUEO)).isoformat()
     hist = historial.query(
         KeyConditionExpression=Key('pk').eq(f'UNIDAD#{unidad_id}'),
-        FilterExpression=Attr('inmobiliaria_id').eq(inmobiliaria_id) & Attr('fecha_liberacion').gte(ts_limite),
+        FilterExpression=Attr('inmobiliaria_id').eq(inmo_id) & Attr('fecha_liberacion').gte(ts_limite),
         Limit=1,
     )
     if hist.get('Items'):
@@ -52,7 +70,7 @@ def bloquear(event):
             ExpressionAttributeValues={
                 ':bloqueada': 'bloqueada',
                 ':disponible': 'disponible',
-                ':inmo': inmobiliaria_id,
+                ':inmo': inmo_id,
                 ':ts': ts_bloqueo,
                 ':lib': ts_liberacion,
             },
@@ -73,7 +91,8 @@ def bloquear(event):
         'pk': f'UNIDAD#{unidad_id}',
         'sk': f'BLOQUEO#{ts_bloqueo}',
         'proyecto_id': proyecto_id,
-        'inmobiliaria_id': inmobiliaria_id,
+        'inmobiliaria_id': inmo_id,
+        'inmobiliaria_nombre': inmo_nombre,
         'fecha_bloqueo': ts_bloqueo,
         'fecha_liberacion': ts_liberacion,
         'motivo_liberacion': None,
@@ -87,7 +106,8 @@ def bloquear(event):
                 'evento': 'bloqueo_registrado',
                 'unidad_id': unidad_id,
                 'proyecto_id': proyecto_id,
-                'inmobiliaria_id': inmobiliaria_id,
+                'inmobiliaria_id': inmo_id,
+                'inmobiliaria_nombre': inmo_nombre,
                 'fecha_bloqueo': ts_bloqueo,
                 'fecha_liberacion': ts_liberacion,
             }),
@@ -96,7 +116,8 @@ def bloquear(event):
     return ok({
         'unidad_id': unidad_id,
         'proyecto_id': proyecto_id,
-        'inmobiliaria_id': inmobiliaria_id,
+        'inmobiliaria_id': inmo_id,
+        'inmobiliaria_nombre': inmo_nombre,
         'fecha_bloqueo': ts_bloqueo,
         'fecha_liberacion': ts_liberacion,
     })
@@ -108,4 +129,10 @@ def listar_activos(event):
         KeyConditionExpression=Key('estado').eq('bloqueada'),
     )
     items = result.get('Items', [])
+    # Extraer proyecto_id del pk (PROYECTO#<id>) si no está como campo suelto
+    for item in items:
+        if not item.get('proyecto_id') and item.get('pk', '').startswith('PROYECTO#'):
+            item['proyecto_id'] = item['pk'].replace('PROYECTO#', '')
+        if not item.get('unidad_id') and item.get('sk', '').startswith('UNIDAD#'):
+            item['unidad_id'] = item['sk'].replace('UNIDAD#', '')
     return ok(items)

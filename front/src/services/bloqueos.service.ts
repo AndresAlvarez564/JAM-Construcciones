@@ -1,5 +1,5 @@
 import { apiGet, apiPost, apiPut, apiDelete } from './api';
-import type { Bloqueo } from '../types';
+import type { Bloqueo, HistorialBloqueo } from '../types';
 
 export const bloquearUnidad = (data: {
   proyecto_id: string;
@@ -8,6 +8,11 @@ export const bloquearUnidad = (data: {
 
 export const getBloquesActivos = (): Promise<Bloqueo[]> =>
   apiGet<Bloqueo[]>('/bloqueos/activos');
+
+export const getHistorialBloqueos = (unidadId?: string): Promise<HistorialBloqueo[]> => {
+  const qs = unidadId ? `?unidad_id=${unidadId}` : '';
+  return apiGet<HistorialBloqueo[]>(`/admin/bloqueos/historial${qs}`);
+};
 
 export const liberarBloqueo = (unidadId: string, proyectoId: string): Promise<{ message: string }> =>
   apiDelete(`/admin/bloqueos/${unidadId}?proyecto_id=${proyectoId}`);

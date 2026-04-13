@@ -1,6 +1,6 @@
 from utils.auth import require_admin, get_rol
 from utils.response import forbidden, not_found, bad_request
-from routes import bloqueos, admin_bloqueos, scheduler_handler
+from routes import bloqueos, admin_bloqueos, scheduler_handler, historial
 
 
 def handler(event, context):
@@ -28,6 +28,9 @@ def handler(event, context):
 
     if method == 'GET' and path == '/bloqueos/activos':
         return bloqueos.listar_activos(event)
+
+    if method == 'GET' and path == '/admin/bloqueos/historial':
+        return historial.listar(event)
 
     if method == 'DELETE' and unidad_id and '/admin/bloqueos/' in path:
         return admin_bloqueos.liberar(proyecto_id, unidad_id, event)

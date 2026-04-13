@@ -11,8 +11,17 @@ from utils import scheduler as sched
 dynamodb = boto3.resource('dynamodb')
 inventario = dynamodb.Table(os.environ['INVENTARIO_TABLE'])
 historial = dynamodb.Table(os.environ['HISTORIAL_TABLE'])
+usuarios = dynamodb.Table(os.environ['USUARIOS_TABLE'])
 sqs = boto3.client('sqs')
 SQS_URL = os.environ.get('SQS_URL', '')
+
+
+def _get_nombre_usuario(sub: str) -> str:
+    try:
+        item = usuarios.get_item(Key={'pk': f'USUARIO#{sub}', 'sk': 'METADATA'}).get('Item', {})
+        return item.get('nombre') or item.get('cognito_username') or sub
+    except Exception:
+        return sub
 
 
 def _get_unidad_bloqueada(proyecto_id, unidad_id):
@@ -52,6 +61,7 @@ def liberar(proyecto_id, unidad_id, event):
 
     claims = get_claims(event)
     admin_id = claims.get('sub', 'admin')
+    admin_nombre = _get_nombre_usuario(admin_id)
     inmobiliaria_id = unidad.get('bloqueado_por')
     fecha_bloqueo = unidad.get('fecha_bloqueo', '')
 
@@ -66,7 +76,7 @@ def liberar(proyecto_id, unidad_id, event):
     sched.eliminar_schedules(unidad_id)
 
     # Historial
-    _registrar_liberacion(unidad_id, proyecto_id, inmobiliaria_id, 'manual', admin_id, fecha_bloqueo)
+    _registrar_liberacion(unidad_id, proyecto_id, inmobiliaria_id, 'manual', admin_nombre, fecha_bloqueo)
 
     # Notificar
     if SQS_URL:

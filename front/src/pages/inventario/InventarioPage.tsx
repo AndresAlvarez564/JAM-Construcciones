@@ -7,7 +7,7 @@ import {
   PlusOutlined, AppstoreOutlined, EditOutlined, DeleteOutlined,
   SettingOutlined, HomeOutlined, ArrowLeftOutlined,
   CheckCircleOutlined, LockOutlined, StopOutlined, DollarOutlined,
-  UploadOutlined,
+  UploadOutlined, ClockCircleOutlined,
 } from '@ant-design/icons';
 import type { UploadFile } from 'antd';
 import {
@@ -17,6 +17,7 @@ import {
   crearUnidad, actualizarUnidad, eliminarUnidad,
   getPresignedImagenProyecto,
 } from '../../services/proyectos.service';
+import { bloquearUnidad } from '../../services/bloqueos.service';
 import type { Proyecto, Unidad, Etapa, Torre } from '../../types';
 import useAuth from '../../hooks/useAuth';
 
@@ -55,14 +56,23 @@ const projectGradient = (nombre: string) => {
   return gradients[Math.abs(hash) % gradients.length];
 };
 
+const formatTiempo = (segundos: number) => {
+  if (segundos <= 0) return 'Vencido';
+  const h = Math.floor(segundos / 3600);
+  const m = Math.floor((segundos % 3600) / 60);
+  return `${h}h ${m}m`;
+};
+
 const InventarioPage = () => {
   const { usuario } = useAuth();
   const isAdmin = usuario?.rol === 'admin';
+  const isInmobiliaria = usuario?.rol === 'inmobiliaria';
 
   const [proyectos, setProyectos] = useState<Proyecto[]>([]);
   const [unidades, setUnidades] = useState<Unidad[]>([]);
   const [etapas, setEtapas] = useState<Etapa[]>([]);
   const [torres, setTorres] = useState<Torre[]>([]);
+  const [bloqueando, setBloqueando] = useState<string | null>(null);
 
   const [vista, setVista] = useState<Vista>('proyectos');
   const [proyectoId, setProyectoId] = useState('');
@@ -311,6 +321,51 @@ const InventarioPage = () => {
     } catch { message.error('Error al eliminar unidad'); }
   };
 
+  const handleBloquear = async (u: Unidad) => {
+    setBloqueando(u.unidad_id);
+    try {
+      // Retry automático una vez en caso de cold start (502/503)
+      let intentos = 0;
+      while (intentos < 2) {
+        try {
+          await bloquearUnidad({ proyecto_id: proyectoId, unidad_id: u.unidad_id });
+          break;
+        } catch (err: any) {
+          const status = err?.response?.statusCode ?? err?.response?.status ?? err?.statusCode;
+          if ((status === 502 || status === 503) && intentos === 0) {
+            intentos++;
+            await new Promise(r => setTimeout(r, 1500));
+            continue;
+          }
+          throw err;
+        }
+      }
+      message.success(`Unidad ${u.id_unidad} bloqueada por 48h`);
+      // Refrescar según la vista activa
+      if (vista === 'unidades-proyecto') {
+        await cargarTodasUnidades(proyectoId, etapaId, torreId, filtroEstado);
+      } else {
+        await cargarUnidades();
+      }
+    } catch (err: any) {
+      const status = err?.response?.statusCode ?? err?.response?.status ?? err?.statusCode;
+      const body = err?.response?.body;
+      let parsedStatus = status;
+      // Amplify a veces mete el status dentro del body como string JSON
+      if (!parsedStatus && body) {
+        try {
+          const parsed = typeof body === 'string' ? JSON.parse(body) : body;
+          parsedStatus = parsed?.statusCode;
+        } catch { /* ok */ }
+      }
+      if (parsedStatus === 409) message.error('La unidad ya no está disponible');
+      else if (parsedStatus === 429) message.warning('Esta unidad no puede bloquearse nuevamente hasta 24h después de su liberación');
+      else message.error('Error al bloquear unidad');
+    } finally {
+      setBloqueando(null);
+    }
+  };
+
   // ── Columnas tabla ───────────────────────────────────────────
   const columnaEdificio = {
     title: 'Edificio', dataIndex: 'torre_id', key: 'torre_id',
@@ -334,7 +389,17 @@ const InventarioPage = () => {
     },
     {
       title: 'Estado', dataIndex: 'estado', key: 'estado',
-      render: estadoTag,
+      render: (v: string, u: Unidad) => (
+        <Space direction="vertical" size={2}>
+          {estadoTag(v)}
+          {v === 'bloqueada' && u.tiempo_restante !== undefined && (
+            <Text style={{ fontSize: 11, color: u.tiempo_restante < 5 * 3600 ? '#faad14' : '#52c41a' }}>
+              <ClockCircleOutlined style={{ marginRight: 3 }} />
+              {formatTiempo(u.tiempo_restante)}
+            </Text>
+          )}
+        </Space>
+      ),
     },
     ...(isAdmin ? [
       { title: 'Bloqueado por', dataIndex: 'bloqueado_por', key: 'bloqueado_por', render: (v: string) => v ?? <Text type="secondary">—</Text> },
@@ -354,6 +419,28 @@ const InventarioPage = () => {
           </Popconfirm>
         </Space>
       ),
+    }] : []),
+    ...(isInmobiliaria ? [{
+      title: '', key: 'bloqueo', width: 120,
+      render: (_: any, u: Unidad) => {
+        if (u.estado === 'bloqueada') {
+          return <Tag icon={<LockOutlined />} color="warning" style={{ margin: 0 }}>Bloqueada</Tag>;
+        }
+        if (u.estado !== 'disponible') return null;
+        return (
+          <Popconfirm
+            title={`Bloquear unidad ${u.id_unidad}`}
+            description="Se bloqueara por 48 horas."
+            okText="Bloquear"
+            cancelText="Cancelar"
+            onConfirm={() => handleBloquear(u)}
+          >
+            <Button size="small" icon={<LockOutlined />} loading={bloqueando === u.unidad_id} type="primary" ghost>
+              Bloquear
+            </Button>
+          </Popconfirm>
+        );
+      },
     }] : []),
   ];
 
