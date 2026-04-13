@@ -9,9 +9,17 @@ export const bloquearUnidad = (data: {
 export const getBloquesActivos = (): Promise<Bloqueo[]> =>
   apiGet<Bloqueo[]>('/bloqueos/activos');
 
-export const getHistorialBloqueos = (unidadId?: string): Promise<HistorialBloqueo[]> => {
-  const qs = unidadId ? `?unidad_id=${unidadId}` : '';
-  return apiGet<HistorialBloqueo[]>(`/admin/bloqueos/historial${qs}`);
+export interface HistorialResponse {
+  items: HistorialBloqueo[];
+  next_token?: string;
+}
+
+export const getHistorialBloqueos = (unidadId?: string, nextToken?: string): Promise<HistorialResponse> => {
+  const params = new URLSearchParams();
+  if (unidadId) params.set('unidad_id', unidadId);
+  if (nextToken) params.set('next_token', nextToken);
+  const qs = params.toString() ? `?${params.toString()}` : '';
+  return apiGet<HistorialResponse>(`/admin/bloqueos/historial${qs}`);
 };
 
 export const liberarBloqueo = (unidadId: string, proyectoId: string): Promise<{ message: string }> =>

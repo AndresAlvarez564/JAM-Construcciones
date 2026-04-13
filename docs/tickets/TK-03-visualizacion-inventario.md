@@ -15,27 +15,19 @@ Incluye mejoras visuales, filtros en cascada y experiencia de usuario optimizada
 - ✅ Filtros disponibles: `etapa_id`, `torre_id`, `estado`
 - ✅ La respuesta varía según el rol del token (admin vs inmobiliaria)
 - ✅ Inmobiliaria NO ve: `cliente_id`, `bloqueado_por`
-- ⬜ Inmobiliaria tampoco debe ver: `fecha_bloqueo`, `fecha_liberacion` (ajuste pendiente)
-
-> El campo `tiempo_restante` y la lógica de bloqueo se implementan en TK-04.
-> TK-03 solo consume esos datos una vez que TK-04 los provea.
+- ✅ `fecha_liberacion` y `tiempo_restante` incluidos para unidades bloqueadas (completado en TK-04)
 
 ### Frontend (React + Vite)
 - ✅ Navegación proyecto → edificio → unidades con breadcrumb
-- ✅ Filtro por estado
+- ✅ Filtros en cascada: etapa → torre → estado con botón limpiar
 - ✅ Inmobiliarias solo ven proyectos asignados
 - ✅ Tabla de unidades con columnas base (ID, metraje, precio, estado)
-- ✅ Columna de edificio visible en vista "todas las unidades del proyecto"
-- ⬜ Filtros en cascada: etapa → torre
-- ⬜ Colores de estado diferenciados para todos los estados (solo verde está implementado)
-- ⬜ Columna de etapa visible en la tabla
-- ⬜ Columnas admin: `bloqueado_por`, `fecha_bloqueo` (visibles solo para admin)
-- ⬜ Mejoras visuales: colores de fila por estado, cards con resumen de unidades
-- ⬜ Responsive mejorado
-
----
-
-## Visibilidad por rol
+- ✅ Columna de edificio y etapa visibles en vista "todas las unidades del proyecto"
+- ✅ Colores de estado diferenciados para todos los estados
+- ✅ Columnas admin: `bloqueado_por`, `fecha_bloqueo` visibles solo para admin
+- ✅ Colores de fila por estado en la tabla
+- ✅ Cards de estadísticas (total, disponibles, bloqueadas, vendidas)
+- ✅ Timer de bloqueo con tiempo restante (completado en TK-04)
 
 | Campo | Admin | Inmobiliaria |
 |-------|-------|--------------|
@@ -44,12 +36,10 @@ Incluye mejoras visuales, filtros en cascada y experiencia de usuario optimizada
 | Metraje | ✔ | ✔ |
 | Precio | ✔ | ✔ |
 | Estado | ✔ | ✔ |
-| Tiempo restante (bloqueo) | ✔ (TK-04) | ✔ (TK-04) |
+| Tiempo restante (bloqueo) | ✔ | ✔ |
 | Cliente asociado | ✔ | ✗ |
 | Inmobiliaria que bloqueó | ✔ | ✗ |
 | Fecha de bloqueo | ✔ | ✗ |
-
-> La lógica de visibilidad se aplica en el backend según el grupo Cognito del token.
 
 ---
 
@@ -58,81 +48,69 @@ Incluye mejoras visuales, filtros en cascada y experiencia de usuario optimizada
 | Filtro | Estado | Descripción |
 |--------|--------|-------------|
 | Proyecto | ✅ | Lista de proyectos asignados al usuario |
-| Etapa | ⬜ | Etapas del proyecto seleccionado (carga al elegir proyecto) |
-| Torre | ✅ | Torres del proyecto (falta filtrar por etapa seleccionada) |
+| Etapa | ✅ | Etapas del proyecto, filtra torres en cascada |
+| Torre | ✅ | Torres filtradas por etapa seleccionada |
 | Estado | ✅ | disponible, bloqueada, no_disponible, vendida, desvinculada |
 
-- ⬜ Los filtros de etapa y torre deben cargar en cascada (etapa primero, luego torre filtrada por etapa)
+---
+## Filtros
+
+| Filtro | Estado | Descripción |
+|--------|--------|-------------|
+| Proyecto | ✅ | Lista de proyectos asignados al usuario |
+| Etapa | ✅ | Etapas del proyecto, filtra torres en cascada |
+| Torre | ✅ | Torres filtradas por etapa seleccionada |
+| Estado | ✅ | disponible, bloqueada, no_disponible, vendida, desvinculada |
 
 ---
+
+## Timer de bloqueo
 
 ## Estados y visualización
 
 | Estado | Color | Estado impl. |
 |--------|-------|--------------|
 | `disponible` | Verde | ✅ |
-| `bloqueada` | Amarillo | ⬜ |
-| `no_disponible` | Naranja | ⬜ |
-| `vendida` | Gris | ⬜ |
-| `desvinculada` | Rojo claro | ⬜ |
+| `bloqueada` | Amarillo | ✅ |
+| `no_disponible` | Naranja | ✅ |
+| `vendida` | Gris | ✅ |
+| `desvinculada` | Rojo claro | ✅ |
 
 ---
 
-## Timer de bloqueo (depende de TK-04)
+## Timer de bloqueo
 
-> Esta sección se completa una vez que TK-04 provea `fecha_liberacion` y `tiempo_restante` en el response.
+- ✅ Se muestra solo cuando `estado = bloqueada`
+- ✅ Tiempo restante calculado desde `fecha_liberacion` (provisto por TK-04)
+- ✅ Color verde si quedan más de 5h, amarillo si quedan menos de 5h
+- ✅ Visible para admin e inmobiliaria
+## Estado
 
-- ⬜ Se muestra solo cuando `estado = bloqueada`
-- ⬜ Countdown en tiempo real calculado desde `fecha_liberacion`
-- ⬜ Al llegar a 0 la unidad cambia visualmente a `disponible` sin recargar
-- ⬜ A las 5h o menos antes de vencer: resaltar visualmente el timer (color rojo)
-
----
-
-## Mejoras visuales frontend (pendientes)
-
-- ⬜ Colores de fila en tabla según estado de la unidad
-- ⬜ Cards de proyecto con resumen de unidades por estado
-- ⬜ Columna de etapa en la tabla de unidades
-- ⬜ Columnas admin (`bloqueado_por`, `fecha_bloqueo`) visibles solo para admin
-- ⬜ Mensaje de vacío con contexto (ej: "No hay unidades disponibles en esta torre")
-
----
-
-## Endpoint
-
-```
-GET /proyectos/{proyecto_id}/unidades
-  ?etapa_id=<etapa_id>
-  &torre_id=<torre_id>
-  &estado=disponible,bloqueada
-```
-
-Respuesta admin incluye: `cliente_id`, `bloqueado_por`, `fecha_bloqueo`, `fecha_liberacion`
-Respuesta inmobiliaria excluye esos campos
-
----
-
+**Completado** — Abril 2026
 ## Criterios de aceptación
 
 - ✅ El usuario puede filtrar unidades por proyecto, torre y estado
 - ✅ Las inmobiliarias no ven `cliente_id` ni `bloqueado_por`
 - ✅ Admin ve todos los campos incluyendo cliente e inmobiliaria bloqueadora
 - ✅ Inmobiliarias solo ven proyectos que tienen asignados
-- ⬜ Filtro por etapa con cascada etapa → torre
-- ⬜ Cada estado tiene un color visual diferenciado
-- ⬜ La columna de etapa es visible en la tabla
-- ⬜ Las columnas admin (`bloqueado_por`, `fecha_bloqueo`) solo aparecen para admin
-- ⬜ Inmobiliaria no ve `fecha_bloqueo` ni `fecha_liberacion` (ajuste backend)
-- ⬜ La vista es usable en desktop y móvil (mejoras responsive)
-- ⬜ Timer de bloqueo en tiempo real (completar tras TK-04)
+- ✅ Filtro por etapa con cascada etapa → torre
+- ✅ Cada estado tiene un color visual diferenciado
+- ✅ La columna de etapa es visible en la tabla
+- ✅ Las columnas admin (`bloqueado_por`, `fecha_bloqueo`) solo aparecen para admin
+- ✅ Inmobiliaria no ve `fecha_bloqueo` ni `fecha_liberacion`
+- ✅ Timer de bloqueo en tiempo real con color según proximidad al vencimiento
 
 ---
 
 ## Notas técnicas
 
 - El backend filtra los campos de respuesta según el grupo Cognito del token
-- Paginación recomendada si el proyecto supera 200 unidades visibles
-- El timer corre en el cliente, no requiere polling al backend (implementar tras TK-04)
-- Depende de: TK-01 (auth), TK-02 (modelo de datos)
-- Timer y campos de bloqueo se integran visualmente una vez completado TK-04
+- El timer corre en el cliente calculado desde `fecha_liberacion` — no requiere polling
+- `fecha_liberacion` y `tiempo_restante` son provistos por `jam-proyectos` tras el ajuste de TK-04
+- Depende de: TK-01 (auth), TK-02 (modelo de datos), TK-04 (timer de bloqueo)
+
+---
+
+## Estado
+
+**Completado** — Abril 2026

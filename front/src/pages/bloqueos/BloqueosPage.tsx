@@ -31,6 +31,7 @@ const BloqueosPage = () => {
   const [bloqueos, setBloqueos] = useState<Bloqueo[]>([]);
   const [proyectos, setProyectos] = useState<Proyecto[]>([]);
   const [historial, setHistorial] = useState<HistorialBloqueo[]>([]);
+  const [historialNextToken, setHistorialNextToken] = useState<string | undefined>();
   const [inmobiliarias, setInmobiliarias] = useState<Inmobiliaria[]>([]);
   const [loading, setLoading] = useState(false);
   const [loadingHistorial, setLoadingHistorial] = useState(false);
@@ -64,7 +65,11 @@ const BloqueosPage = () => {
     setLoadingHistorial(true);
     try {
       const [h, inmos] = await Promise.all([getHistorialBloqueos(), getInmobiliarias()]);
-      setHistorial(h);
+      const sorted = [...h.items].sort((a, b) =>
+        (b.fecha_bloqueo ?? '').localeCompare(a.fecha_bloqueo ?? '')
+      );
+      setHistorial(sorted);
+      setHistorialNextToken(h.next_token);
       setInmobiliarias(inmos);
     } catch {
       message.error('Error al cargar historial');
@@ -72,6 +77,22 @@ const BloqueosPage = () => {
       setLoadingHistorial(false);
     }
   }, []);
+
+  const cargarMasHistorial = useCallback(async () => {
+    if (!historialNextToken) return;
+    setLoadingHistorial(true);
+    try {
+      const h = await getHistorialBloqueos(undefined, historialNextToken);
+      setHistorial(prev => [...prev, ...h.items].sort((a, b) =>
+        (b.fecha_bloqueo ?? '').localeCompare(a.fecha_bloqueo ?? '')
+      ));
+      setHistorialNextToken(h.next_token);
+    } catch {
+      message.error('Error al cargar más historial');
+    } finally {
+      setLoadingHistorial(false);
+    }
+  }, [historialNextToken]);
 
   const handleLiberar = async (b: Bloqueo) => {
     try {
@@ -217,34 +238,43 @@ const BloqueosPage = () => {
             key: 'historial',
             label: <span><HistoryOutlined /> Historial</span>,
             children: (
-              <Table
-                dataSource={historial}
-                rowKey="sk"
-                loading={loadingHistorial}
-                pagination={{ pageSize: 20 }}
-                locale={{ emptyText: 'No hay registros en el historial' }}
-                columns={[
-                  { title: 'Unidad', dataIndex: 'unidad_id', key: 'unidad_id', render: (v: string) => <Text strong>{v}</Text> },
-                  { title: 'Proyecto', dataIndex: 'proyecto_id', key: 'proyecto_id', render: (v: string) => proyectoNombre(v) },
-                  { title: 'Inmobiliaria', dataIndex: 'inmobiliaria_id', key: 'inmobiliaria_id', render: (v: string, r: any) => {
-                    const inmo = inmobiliarias.find(i => i.pk === v || i.pk === `INMOBILIARIA#${v}`);
-                    return <Tag>{r.inmobiliaria_nombre ?? inmo?.nombre ?? v}</Tag>;
-                  }},
-                  { title: 'Bloqueado', dataIndex: 'fecha_bloqueo', key: 'fecha_bloqueo', render: (v: string) => new Date(v).toLocaleString('es-VE') },
-                  { title: 'Liberado', dataIndex: 'fecha_liberacion', key: 'fecha_liberacion', render: (v: string) => v ? new Date(v).toLocaleString('es-VE') : '—' },
-                  {
-                    title: 'Motivo',
-                    dataIndex: 'motivo_liberacion',
-                    key: 'motivo_liberacion',
-                    render: (v: string) => {
-                      if (!v) return <Tag color="warning">Activo</Tag>;
-                      const cfg: Record<string, string> = { automatica: 'success', manual: 'blue', venta: 'purple' };
-                      return <Tag color={cfg[v] ?? 'default'}>{v}</Tag>;
+              <>
+                <Table
+                  dataSource={historial}
+                  rowKey="sk"
+                  loading={loadingHistorial}
+                  pagination={{ pageSize: 20 }}
+                  locale={{ emptyText: 'No hay registros en el historial' }}
+                  columns={[
+                    { title: 'Unidad', dataIndex: 'unidad_id', key: 'unidad_id', render: (v: string) => <Text strong>{v}</Text> },
+                    { title: 'Proyecto', dataIndex: 'proyecto_id', key: 'proyecto_id', render: (v: string) => proyectoNombre(v) },
+                    { title: 'Inmobiliaria', dataIndex: 'inmobiliaria_id', key: 'inmobiliaria_id', render: (v: string, r: any) => {
+                      const inmo = inmobiliarias.find(i => i.pk === v || i.pk === `INMOBILIARIA#${v}`);
+                      return <Tag>{r.inmobiliaria_nombre ?? inmo?.nombre ?? v}</Tag>;
+                    }},
+                    { title: 'Bloqueado', dataIndex: 'fecha_bloqueo', key: 'fecha_bloqueo', render: (v: string) => new Date(v).toLocaleString('es-VE') },
+                    { title: 'Liberado', dataIndex: 'fecha_liberacion', key: 'fecha_liberacion', render: (v: string) => v ? new Date(v).toLocaleString('es-VE') : '—' },
+                    {
+                      title: 'Motivo',
+                      dataIndex: 'motivo_liberacion',
+                      key: 'motivo_liberacion',
+                      render: (v: string) => {
+                        if (!v) return <Tag color="warning">Activo</Tag>;
+                        const cfg: Record<string, string> = { automatica: 'success', manual: 'blue', venta: 'purple' };
+                        return <Tag color={cfg[v] ?? 'default'}>{v}</Tag>;
+                      },
                     },
-                  },
-                  { title: 'Liberado por', dataIndex: 'liberado_por', key: 'liberado_por', render: (v: string) => v ?? '—' },
-                ]}
-              />
+                    { title: 'Liberado por', dataIndex: 'liberado_por', key: 'liberado_por', render: (v: string) => v ?? '—' },
+                  ]}
+                />
+                {historialNextToken && (
+                  <div style={{ textAlign: 'center', marginTop: 16 }}>
+                    <Button onClick={cargarMasHistorial} loading={loadingHistorial}>
+                      Cargar más
+                    </Button>
+                  </div>
+                )}
+              </>
             ),
           },
         ]}

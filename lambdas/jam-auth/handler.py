@@ -1,12 +1,14 @@
-import os
-import json
-import boto3
-from boto3.dynamodb.conditions import Key
 from utils.response import not_found, forbidden
 from routes import auth, inmobiliarias, usuarios, sistema
 
-dynamodb = boto3.resource('dynamodb')
-USUARIOS_TABLE = os.environ['USUARIOS_TABLE']
+
+def _get_claims(event):
+    return event.get('requestContext', {}).get('authorizer', {}).get('claims', {})
+
+
+def _is_admin(event):
+    groups = _get_claims(event).get('cognito:groups', '')
+    return 'admin' in groups
 
 
 def handler(event, context):
@@ -94,23 +96,3 @@ def handler(event, context):
         return usuarios.eliminar(usuario_id)
 
     return not_found('Not found')
-
-
-def _is_admin(event):
-    claims = event.get('requestContext', {}).get('authorizer', {}).get('claims', {})
-    sub = claims.get('sub')
-    if not sub:
-        return False
-    table = dynamodb.Table(USUARIOS_TABLE)
-    item = table.get_item(Key={'pk': f'USUARIO#{sub}', 'sk': 'METADATA'}).get('Item')
-    return item and item.get('rol') == 'admin'
-
-
-def _get_rol(event):
-    claims = event.get('requestContext', {}).get('authorizer', {}).get('claims', {})
-    sub = claims.get('sub')
-    if not sub:
-        return None
-    table = dynamodb.Table(USUARIOS_TABLE)
-    item = table.get_item(Key={'pk': f'USUARIO#{sub}', 'sk': 'METADATA'}).get('Item')
-    return item.get('rol') if item else None
