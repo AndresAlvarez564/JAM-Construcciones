@@ -76,8 +76,12 @@ export interface HistorialBloqueo {
   pk: string;
   sk: string;
   unidad_id: string;
+  unidad_nombre?: string;
+  torre_id?: string;
+  torre_nombre?: string;
   proyecto_id: string;
   inmobiliaria_id: string;
+  inmobiliaria_nombre?: string;
   fecha_bloqueo: string;
   fecha_liberacion: string;
   motivo_liberacion?: string;
@@ -89,10 +93,41 @@ export interface Bloqueo {
   sk: string;
   unidad_id: string;
   id_unidad?: string;
+  torre_nombre?: string;
   proyecto_id: string;
   bloqueado_por: string;
   fecha_bloqueo: string;
   fecha_liberacion: string;
   tiempo_restante?: number;
   estado: string;
+}
+
+export type EstadoCliente = 'captacion' | 'disponible' | 'reserva' | 'separacion' | 'inicial' | 'desvinculado';
+
+export interface UnidadVinculada {
+  unidad_id: string;
+  unidad_nombre: string;
+  fecha_vinculacion: string;
+}
+
+export interface Cliente {
+  pk: string;
+  sk: string;
+  cedula: string;
+  inmobiliaria_id: string;
+  proyecto_id: string;
+  nombres: string;
+  apellidos: string;
+  correo?: string;
+  telefono?: string;
+  estado_civil?: string;
+  nacionalidad?: string;
+  pais_residencia?: string;
+  fecha_nacimiento?: string;
+  edad?: number;
+  unidades?: UnidadVinculada[];
+  estado: EstadoCliente;
+  exclusividad_activa: boolean;
+  fecha_captacion: string;
+  fecha_vencimiento: string;
 }

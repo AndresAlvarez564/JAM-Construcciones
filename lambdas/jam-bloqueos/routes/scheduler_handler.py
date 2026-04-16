@@ -8,6 +8,7 @@ import json
 import os
 from datetime import datetime, timezone
 from boto3.dynamodb.conditions import Key
+from utils.clientes import desvincular_unidad
 
 dynamodb = boto3.resource('dynamodb')
 inventario = dynamodb.Table(os.environ['INVENTARIO_TABLE'])
@@ -37,13 +38,18 @@ def _liberar(unidad_id, proyecto_id):
 
     inmobiliaria_id = item.get('bloqueado_por')
     fecha_bloqueo = item.get('fecha_bloqueo', '')
+    cliente_cedula = item.get('cliente_cedula', '')
     ts_ahora = datetime.now(timezone.utc).isoformat()
 
     inventario.update_item(
         Key={'pk': f'PROYECTO#{proyecto_id}', 'sk': f'UNIDAD#{unidad_id}'},
-        UpdateExpression='REMOVE bloqueado_por, fecha_bloqueo, fecha_liberacion SET estado = :d',
+        UpdateExpression='REMOVE bloqueado_por, fecha_bloqueo, fecha_liberacion, cliente_cedula SET estado = :d',
         ExpressionAttributeValues={':d': 'disponible'},
     )
+
+    # Desvincular unidad del cliente
+    if cliente_cedula and inmobiliaria_id:
+        desvincular_unidad(unidad_id, cliente_cedula, inmobiliaria_id, proyecto_id)
 
     # Actualizar historial
     try:

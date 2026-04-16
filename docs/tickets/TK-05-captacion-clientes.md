@@ -49,15 +49,15 @@ por proyecto durante 3 meses.
 ```
 Inmobiliaria registra cliente (cédula + proyecto)
         ↓
-¿Existe registro activo con misma cédula + mismo proyecto?
+¿Existe registro con misma cédula + mismo proyecto + misma inmobiliaria?
         ↓ Sí
-¿Es la misma inmobiliaria? → Sí → Actualizar datos, no duplicar
-        ↓ No (otra inmobiliaria)
-Alerta: "Este cliente está activo con otra inmobiliaria en este proyecto.
-         Contacta a JAM Construcciones."
-        → Rechazar registro (409)
-        ↓ No existe registro activo
-Registrar cliente con exclusividad de 3 meses
+¿exclusividad_activa = true? → actualizar datos, renovar exclusividad
+¿exclusividad_activa = false? → re-captar: nueva fecha, nueva exclusividad
+        ↓ No (no existe registro propio)
+¿Existe registro activo (exclusividad_activa = true) de OTRA inmobiliaria?
+        ↓ Sí → Rechazar (409). Notificación al admin en TK-08
+        ↓ No (exclusividad vencida o nunca registrado)
+Crear registro nuevo para esta inmobiliaria
 Programar vencimiento en EventBridge Scheduler
         ↓
 Cliente queda en estado: captacion
@@ -65,8 +65,12 @@ Cliente queda en estado: captacion
 
 - La exclusividad es por `cedula + proyecto`, no global
 - El mismo cliente puede registrarse en otro proyecto sin restricción
-- Al vencer los 3 meses: `exclusividad_activa = false`, cliente queda disponible
-- El registro del cliente nunca se elimina, solo cambia su estado de exclusividad
+- Cada inmobiliaria tiene su propio registro del cliente — el historial nunca se pisa
+- Al vencer los 3 meses: `exclusividad_activa = false`, cliente queda disponible para cualquier inmobiliaria
+- El registro nunca se elimina, solo cambia su estado de exclusividad
+- La inmobiliaria siempre ve sus clientes aunque haya vencido la exclusividad, marcados como "Vencido"
+- Si la misma inmobiliaria quiere re-captar un cliente vencido, se actualiza su registro existente con nueva fecha y exclusividad — sin crear duplicado
+- La notificación al admin por intento de duplicado se implementa en TK-08
 
 ---
 
@@ -74,9 +78,11 @@ Cliente queda en estado: captacion
 
 ### Tabla: `jam-clientes`
 
+> **Decisión de diseño:** la clave incluye `inmobiliaria_id` para que cada inmobiliaria tenga su propio registro del cliente. Esto permite que múltiples inmobiliarias tengan historial independiente del mismo cliente en el mismo proyecto a lo largo del tiempo, sin pisarse entre sí.
+
 | Atributo | Tipo | Descripción |
 |----------|------|-------------|
-| pk | String | `CLIENTE#<cedula>` |
+| pk | String | `CLIENTE#<cedula>#<inmobiliaria_id>` |
 | sk | String | `PROYECTO#<proyecto_id>` |
 | nombres | String | |
 | apellidos | String | |
@@ -159,7 +165,9 @@ Cada inmobiliaria tiene acceso a:
 
 ## Notas técnicas
 
-- La clave de unicidad es `cedula + proyecto_id` (pk + sk en DynamoDB)
+- La clave de unicidad es `CLIENTE#<cedula>#<inmobiliaria_id>` + `PROYECTO#<proyecto_id>` — cada inmobiliaria tiene su propio registro del cliente
+- La validación de exclusividad activa se hace buscando registros con `exclusividad_activa = true` de OTRAS inmobiliarias para esa `cedula + proyecto_id`
 - EventBridge Scheduler one-time al registrar para el vencimiento de exclusividad
 - Admin puede editar cualquier campo del cliente; inmobiliaria solo puede registrar
+- Intento de duplicado activo → 409 sin notificación por ahora, notificación al admin se implementa en TK-08
 - Depende de: TK-01 (auth), TK-02 (modelo de datos)

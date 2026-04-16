@@ -126,3 +126,4 @@ Filtros disponibles: `tipo_evento`, `proyecto_id`, `ejecutado_por`, rango de fec
 - Retención de mensajes en DLQ: 14 días
 - Proveedor de email (Resend u otro) configurado por variable de entorno por stage
 - Depende de: TK-01 (auth), TK-02 (modelo de datos), TK-04 (bloqueos), TK-05 (captación), TK-06 (estatus)
+- **Intento de duplicado de cliente (TK-05):** por ahora el endpoint solo rechaza con 409. La notificación al admin vía SQS se implementa aquí en TK-08. El mensaje debe incluir: cédula, proyecto_id, inmobiliaria que intentó registrar, inmobiliaria que ya tiene el cliente activo, y timestamp.

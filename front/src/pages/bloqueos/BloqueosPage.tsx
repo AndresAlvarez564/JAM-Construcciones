@@ -147,6 +147,14 @@ const BloqueosPage = () => {
       render: (v: string) => <Tag>{v}</Tag>,
     },
     {
+      title: 'Cliente',
+      dataIndex: 'cliente_cedula',
+      key: 'cliente_cedula',
+      render: (v: string) => v
+        ? <Tag color="green">Con cliente</Tag>
+        : <Tag color="orange">Sin cliente</Tag>,
+    },
+    {
       title: 'Fecha bloqueo',
       dataIndex: 'fecha_bloqueo',
       key: 'fecha_bloqueo',

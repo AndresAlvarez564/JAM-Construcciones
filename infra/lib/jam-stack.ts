@@ -175,6 +175,35 @@ export class JamStack extends cdk.Stack {
     inventarioTable.grantReadWriteData(proyectosLambda);
     usuariosTable.grantReadData(proyectosLambda);
 
+    // ─── DYNAMODB jam-clientes ───────────────────────────────────────────────
+
+    const clientesTable = new dynamodb.Table(this, 'JamClientesTable', {
+      tableName: 'jam-clientes',
+      partitionKey: { name: 'pk', type: dynamodb.AttributeType.STRING },
+      sortKey: { name: 'sk', type: dynamodb.AttributeType.STRING },
+      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
+      removalPolicy: cdk.RemovalPolicy.RETAIN,
+    });
+
+    clientesTable.addGlobalSecondaryIndex({
+      indexName: 'gsi-inmobiliaria-clientes',
+      partitionKey: { name: 'inmobiliaria_id', type: dynamodb.AttributeType.STRING },
+      sortKey: { name: 'fecha_captacion', type: dynamodb.AttributeType.STRING },
+    });
+
+    clientesTable.addGlobalSecondaryIndex({
+      indexName: 'gsi-proyecto-clientes',
+      partitionKey: { name: 'proyecto_id', type: dynamodb.AttributeType.STRING },
+      sortKey: { name: 'estado', type: dynamodb.AttributeType.STRING },
+    });
+
+    // GSI para validar exclusividad: buscar por cedula + sk (PROYECTO#<id>)
+    clientesTable.addGlobalSecondaryIndex({
+      indexName: 'gsi-cedula-proyecto',
+      partitionKey: { name: 'cedula', type: dynamodb.AttributeType.STRING },
+      sortKey: { name: 'sk', type: dynamodb.AttributeType.STRING },
+    });
+
     // ─── DYNAMODB jam-historial-bloqueos ─────────────────────────────────────
 
     const historialTable = new dynamodb.Table(this, 'JamHistorialBloqueosTable', {
@@ -218,6 +247,7 @@ export class JamStack extends cdk.Stack {
         SCHEDULER_ROLE_ARN: schedulerRole.roleArn,
         BLOQUEOS_LAMBDA_ARN: bloqueosLambdaArn,
         USUARIOS_TABLE: usuariosTable.tableName,
+        CLIENTES_TABLE: clientesTable.tableName,
       },
     });
 
@@ -239,6 +269,47 @@ export class JamStack extends cdk.Stack {
     schedulerRole.addToPolicy(new iam.PolicyStatement({
       actions: ['lambda:InvokeFunction'],
       resources: [bloqueosLambdaArn],
+    }));
+
+    // ─── LAMBDA jam-captacion ────────────────────────────────────────────────
+
+    const captacionLambdaArn = `arn:aws:lambda:${this.region}:${this.account}:function:jam-captacion`;
+
+    const captacionLambda = new lambda.Function(this, 'JamCaptacionLambda', {
+      functionName: 'jam-captacion',
+      runtime: lambda.Runtime.PYTHON_3_12,
+      handler: 'handler.handler',
+      code: lambda.Code.fromAsset(path.join(__dirname, '../../lambdas/jam-captacion')),
+      timeout: cdk.Duration.seconds(30),
+      environment: {
+        CLIENTES_TABLE: clientesTable.tableName,
+        USUARIOS_TABLE: usuariosTable.tableName,
+        INVENTARIO_TABLE: inventarioTable.tableName,
+        CAPTACION_LAMBDA_ARN: captacionLambdaArn,
+        SCHEDULER_ROLE_ARN: schedulerRole.roleArn,
+      },
+    });
+
+    clientesTable.grantReadWriteData(captacionLambda);
+    usuariosTable.grantReadData(captacionLambda);
+    inventarioTable.grantReadData(captacionLambda);
+
+    // jam-bloqueos también necesita leer/escribir clientes para desvincular unidades
+    clientesTable.grantReadWriteData(bloqueosLambda);
+
+    captacionLambda.addToRolePolicy(new iam.PolicyStatement({
+      actions: ['scheduler:CreateSchedule', 'scheduler:DeleteSchedule'],
+      resources: ['*'],
+    }));
+
+    captacionLambda.addToRolePolicy(new iam.PolicyStatement({
+      actions: ['iam:PassRole'],
+      resources: [schedulerRole.roleArn],
+    }));
+
+    schedulerRole.addToPolicy(new iam.PolicyStatement({
+      actions: ['lambda:InvokeFunction'],
+      resources: [captacionLambdaArn],
     }));
 
     // ─── API GATEWAY ────────────────────────────────────────────────────────
@@ -263,6 +334,7 @@ export class JamStack extends cdk.Stack {
     const authLambdaIntegration = new apigateway.LambdaIntegration(authLambda);
     const proyectosLambdaIntegration = new apigateway.LambdaIntegration(proyectosLambda);
     const bloqueosLambdaIntegration = new apigateway.LambdaIntegration(bloqueosLambda);
+    const captacionLambdaIntegration = new apigateway.LambdaIntegration(captacionLambda);
 
     // /auth
     const authResource = api.root.addResource('auth');
@@ -431,6 +503,41 @@ export class JamStack extends cdk.Stack {
       authorizationType: apigateway.AuthorizationType.COGNITO,
     });
     adminBloqueoResource.addResource('extender').addMethod('PUT', bloqueosLambdaIntegration, {
+      authorizer: cognitoAuthorizer,
+      authorizationType: apigateway.AuthorizationType.COGNITO,
+    });
+
+    // /clientes
+    const clientesResource = api.root.addResource('clientes');
+    clientesResource.addMethod('POST', captacionLambdaIntegration, {
+      authorizer: cognitoAuthorizer,
+      authorizationType: apigateway.AuthorizationType.COGNITO,
+    });
+    clientesResource.addMethod('GET', captacionLambdaIntegration, {
+      authorizer: cognitoAuthorizer,
+      authorizationType: apigateway.AuthorizationType.COGNITO,
+    });
+    const clienteResource = clientesResource.addResource('{cedula}');
+    clienteResource.addMethod('GET', captacionLambdaIntegration, {
+      authorizer: cognitoAuthorizer,
+      authorizationType: apigateway.AuthorizationType.COGNITO,
+    });
+
+    // /admin/clientes
+    const adminClientesResource = adminResource.addResource('clientes');
+    adminClientesResource.addMethod('GET', captacionLambdaIntegration, {
+      authorizer: cognitoAuthorizer,
+      authorizationType: apigateway.AuthorizationType.COGNITO,
+    });
+    const adminClienteResource = adminClientesResource.addResource('{cedula}');
+    const adminClienteProyectoResource = adminClienteResource
+      .addResource('proyecto')
+      .addResource('{proyecto_id}');
+    adminClienteProyectoResource.addMethod('GET', captacionLambdaIntegration, {
+      authorizer: cognitoAuthorizer,
+      authorizationType: apigateway.AuthorizationType.COGNITO,
+    });
+    adminClienteProyectoResource.addMethod('PUT', captacionLambdaIntegration, {
       authorizer: cognitoAuthorizer,
       authorizationType: apigateway.AuthorizationType.COGNITO,
     });

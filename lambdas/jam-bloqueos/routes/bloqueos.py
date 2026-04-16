@@ -78,7 +78,7 @@ def bloquear(event):
     try:
         inventario.update_item(
             Key={'pk': f'PROYECTO#{proyecto_id}', 'sk': f'UNIDAD#{unidad_id}'},
-            UpdateExpression='SET estado = :bloqueada, bloqueado_por = :inmo, fecha_bloqueo = :ts, fecha_liberacion = :lib',
+            UpdateExpression='SET estado = :bloqueada, bloqueado_por = :inmo, fecha_bloqueo = :ts, fecha_liberacion = :lib, cliente_cedula = :cedula',
             ConditionExpression='estado = :disponible AND attribute_exists(pk)',
             ExpressionAttributeValues={
                 ':bloqueada': 'bloqueada',
@@ -86,6 +86,7 @@ def bloquear(event):
                 ':inmo': inmo_id,
                 ':ts': ts_bloqueo,
                 ':lib': ts_liberacion,
+                ':cedula': body.get('cliente_cedula', None) or '',
             },
         )
     except ClientError as e:
@@ -153,13 +154,13 @@ def listar_activos(event):
         if not item.get('unidad_id') and item.get('sk', '').startswith('UNIDAD#'):
             item['unidad_id'] = item['sk'].replace('UNIDAD#', '')
 
-    # Resolver nombres de torres con batch_get_item
-    keys_torres = [
-        {'pk': item['pk'], 'sk': f'TORRE#{item["torre_id"]}'}
+    # Resolver nombres de torres con batch_get_item (deduplicar keys)
+    keys_torres_map = {
+        f"{item['pk']}#{item['torre_id']}": {'pk': item['pk'], 'sk': f'TORRE#{item["torre_id"]}'}
         for item in items if item.get('torre_id') and item.get('pk')
-    ]
+    }
+    keys_torres = list(keys_torres_map.values())
     if keys_torres:
-        # batch_get_item acepta máximo 100 keys
         torre_map = {}
         for i in range(0, len(keys_torres), 100):
             batch = inventario.meta.client.batch_get_item(

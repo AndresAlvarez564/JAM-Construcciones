@@ -146,3 +146,4 @@ Al cambiar cualquier estatus, el frontend muestra:
 - EventBridge puede usarse para la fecha límite de pago de reserva (30 días)
 - Canales de notificación: Email (Resend) + WhatsApp (Meta/Twilio) — costos a cargo del cliente
 - Depende de: TK-01 (auth), TK-02 (modelo de datos), TK-05 (captación de clientes)
+- **Pendiente de TK-05:** cuando una inmobiliaria bloquea una unidad y registra un cliente en el mismo flujo, el cliente queda en `captacion`. El cambio a `reserva` ocurre aquí en TK-06 cuando el admin confirma la reserva y marca la unidad como `no_disponible`

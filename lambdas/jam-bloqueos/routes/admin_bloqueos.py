@@ -7,6 +7,7 @@ from boto3.dynamodb.conditions import Key, Attr
 from utils.response import ok, bad_request, not_found, conflict
 from utils.auth import get_claims
 from utils import scheduler as sched
+from utils.clientes import desvincular_unidad
 
 dynamodb = boto3.resource('dynamodb')
 inventario = dynamodb.Table(os.environ['INVENTARIO_TABLE'])
@@ -68,7 +69,7 @@ def liberar(proyecto_id, unidad_id, event):
     # Liberar en inventario
     inventario.update_item(
         Key={'pk': f'PROYECTO#{proyecto_id}', 'sk': f'UNIDAD#{unidad_id}'},
-        UpdateExpression='REMOVE bloqueado_por, fecha_bloqueo, fecha_liberacion SET estado = :d',
+        UpdateExpression='REMOVE bloqueado_por, fecha_bloqueo, fecha_liberacion, cliente_cedula SET estado = :d',
         ExpressionAttributeValues={':d': 'disponible'},
     )
 
@@ -77,6 +78,11 @@ def liberar(proyecto_id, unidad_id, event):
 
     # Historial
     _registrar_liberacion(unidad_id, proyecto_id, inmobiliaria_id, 'manual', admin_nombre, fecha_bloqueo)
+
+    # Desvincular unidad del cliente si había uno asociado
+    cliente_cedula = unidad.get('cliente_cedula', '')
+    if cliente_cedula and inmobiliaria_id:
+        desvincular_unidad(unidad_id, cliente_cedula, inmobiliaria_id, proyecto_id)
 
     # Notificar
     if SQS_URL:
@@ -111,9 +117,10 @@ def extender(proyecto_id, unidad_id, event):
 
     claims = get_claims(event)
     admin_id = claims.get('sub', 'admin')
+    admin_nombre = _get_nombre_usuario(admin_id)
 
     fecha_lib_actual = unidad.get('fecha_liberacion', datetime.now(timezone.utc).isoformat())
-    # Parsear y extender
+    fecha_bloqueo = unidad.get('fecha_bloqueo', '')
     try:
         dt_lib = datetime.fromisoformat(fecha_lib_actual.replace('Z', '+00:00'))
     except ValueError:
@@ -131,6 +138,23 @@ def extender(proyecto_id, unidad_id, event):
     # Reemplazar schedules
     sched.eliminar_schedules(unidad_id)
     sched.crear_schedules(unidad_id, proyecto_id, nueva_lib[:19], nueva_alerta[:19])
+
+    # Registrar extensión en historial
+    extension = {
+        'horas': horas,
+        'justificacion': justificacion,
+        'extendido_por': admin_nombre,
+        'timestamp': datetime.now(timezone.utc).isoformat(),
+        'nueva_fecha_liberacion': nueva_lib,
+    }
+    try:
+        historial.update_item(
+            Key={'pk': f'UNIDAD#{unidad_id}', 'sk': f'BLOQUEO#{fecha_bloqueo}'},
+            UpdateExpression='SET extensiones = list_append(if_not_exists(extensiones, :empty), :ext)',
+            ExpressionAttributeValues={':ext': [extension], ':empty': []},
+        )
+    except Exception:
+        pass
 
     return ok({
         'message': 'Bloqueo extendido',

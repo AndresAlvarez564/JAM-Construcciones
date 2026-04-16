@@ -1,15 +1,16 @@
 ﻿import { useEffect, useState } from 'react';
 import {
   Table, Typography, Tag, Button, Modal, Form, Input, message,
-  Select, Card, Row, Col, Popconfirm, Drawer, Space, Tooltip, Statistic, Upload,
+  Select, Card, Row, Col, Popconfirm, Drawer, Space, Tooltip, Statistic, Upload, Steps, DatePicker,
 } from 'antd';
 import {
   PlusOutlined, AppstoreOutlined, EditOutlined, DeleteOutlined,
   SettingOutlined, HomeOutlined, ArrowLeftOutlined,
   CheckCircleOutlined, LockOutlined, StopOutlined, DollarOutlined,
-  UploadOutlined, ClockCircleOutlined,
+  UploadOutlined, ClockCircleOutlined, UserOutlined,
 } from '@ant-design/icons';
 import type { UploadFile } from 'antd';
+import dayjs from 'dayjs';
 import {
   getProyectos, getUnidades, crearProyecto, actualizarProyecto, eliminarProyecto,
   getEtapas, crearEtapa, actualizarEtapa, eliminarEtapa,
@@ -18,7 +19,8 @@ import {
   getPresignedImagenProyecto,
 } from '../../services/proyectos.service';
 import { bloquearUnidad } from '../../services/bloqueos.service';
-import type { Proyecto, Unidad, Etapa, Torre } from '../../types';
+import { registrarCliente, buscarClientePorCedula } from '../../services/clientes.service';
+import type { Cliente, Proyecto, Unidad, Etapa, Torre } from '../../types';
 import useAuth from '../../hooks/useAuth';
 
 const { Title, Text } = Typography;
@@ -73,6 +75,13 @@ const InventarioPage = () => {
   const [etapas, setEtapas] = useState<Etapa[]>([]);
   const [torres, setTorres] = useState<Torre[]>([]);
   const [bloqueando, setBloqueando] = useState<string | null>(null);
+  const [modalBloqueo, setModalBloqueo] = useState(false);
+  const [unidadABloquear, setUnidadABloquear] = useState<Unidad | null>(null);
+  const [pasoBloqueo, setPasoBloqueo] = useState(0);
+  const [formCliente] = Form.useForm();
+  const [guardandoBloqueo, setGuardandoBloqueo] = useState(false);
+  const [clienteEncontrado, setClienteEncontrado] = useState<Cliente | null>(null);
+  const [buscandoCliente, setBuscandoCliente] = useState(false);
 
   const [vista, setVista] = useState<Vista>('proyectos');
   const [proyectoId, setProyectoId] = useState('');
@@ -321,14 +330,60 @@ const InventarioPage = () => {
     } catch { message.error('Error al eliminar unidad'); }
   };
 
-  const handleBloquear = async (u: Unidad) => {
-    setBloqueando(u.unidad_id);
+  const abrirModalBloqueo = (u: Unidad) => {
+    setUnidadABloquear(u);
+    setPasoBloqueo(0);
+    setClienteEncontrado(null);
+    formCliente.resetFields();
+    setModalBloqueo(true);
+  };
+
+  const buscarCliente = async (cedula: string) => {
+    if (!cedula?.trim()) return;
+    setBuscandoCliente(true);
     try {
-      // Retry automático una vez en caso de cold start (502/503)
+      const result = await buscarClientePorCedula(cedula.trim(), proyectoId);
+      const cliente = Array.isArray(result) ? result[0] : result;
+      if (cliente) {
+        setClienteEncontrado(cliente);
+        formCliente.setFieldsValue({
+          cedula: cliente.cedula,
+          nombres: cliente.nombres,
+          apellidos: cliente.apellidos,
+          correo: cliente.correo,
+          telefono: cliente.telefono,
+          fecha_nacimiento: cliente.fecha_nacimiento ? dayjs(cliente.fecha_nacimiento) : undefined,
+        });
+      } else {
+        setClienteEncontrado(null);
+      }
+    } catch {
+      setClienteEncontrado(null);
+    } finally {
+      setBuscandoCliente(false);
+    }
+  };
+
+  const handleBloquear = async (omitirCliente = false) => {
+    if (!unidadABloquear) return;
+    setGuardandoBloqueo(true);
+    try {
+      // Obtener cédula del form si hay cliente
+      let cedula: string | undefined;
+      if (!omitirCliente) {
+        const values = formCliente.getFieldsValue();
+        cedula = values.cedula?.trim();
+      }
+
+      // Paso 1: bloquear unidad (pasar cédula si existe)
       let intentos = 0;
       while (intentos < 2) {
         try {
-          await bloquearUnidad({ proyecto_id: proyectoId, unidad_id: u.unidad_id });
+          await bloquearUnidad({
+            proyecto_id: proyectoId,
+            unidad_id: unidadABloquear.unidad_id,
+            ...(cedula ? { cliente_cedula: cedula } : {}),
+          });
           break;
         } catch (err: any) {
           const status = err?.response?.statusCode ?? err?.response?.status ?? err?.statusCode;
@@ -340,8 +395,41 @@ const InventarioPage = () => {
           throw err;
         }
       }
-      message.success(`Unidad ${u.id_unidad} bloqueada por 48h`);
-      // Refrescar según la vista activa
+
+      // Paso 2: registrar cliente si no se omitió
+      if (!omitirCliente) {
+        let values: any;
+        try {
+          values = await formCliente.validateFields();
+        } catch {
+          // Validación falló — campos requeridos vacíos
+          message.warning('Completa los campos requeridos del cliente (cédula, nombres, apellidos)');
+          setGuardandoBloqueo(false);
+          return;
+        }
+        try {
+          await registrarCliente({
+            ...values,
+            proyecto_id: proyectoId,
+            unidad_id: unidadABloquear.unidad_id,
+            fecha_nacimiento: values.fecha_nacimiento
+              ? dayjs(values.fecha_nacimiento).format('YYYY-MM-DD')
+              : undefined,
+          });
+          message.success(`Unidad ${unidadABloquear.id_unidad} bloqueada y cliente registrado`);
+        } catch (clienteErr: any) {
+          const s = clienteErr?.response?.status ?? clienteErr?.response?.statusCode;
+          if (s === 409) {
+            message.warning('Unidad bloqueada. El cliente ya tiene exclusividad activa con otra inmobiliaria en este proyecto.');
+          } else {
+            message.warning(`Unidad bloqueada pero no se pudo registrar el cliente: ${s ?? 'error'}`);
+          }
+        }
+      } else {
+        message.success(`Unidad ${unidadABloquear.id_unidad} bloqueada por 48h`);
+      }
+
+      setModalBloqueo(false);
       if (vista === 'unidades-proyecto') {
         await cargarTodasUnidades(proyectoId, etapaId, torreId, filtroEstado);
       } else {
@@ -351,7 +439,6 @@ const InventarioPage = () => {
       const status = err?.response?.statusCode ?? err?.response?.status ?? err?.statusCode;
       const body = err?.response?.body;
       let parsedStatus = status;
-      // Amplify a veces mete el status dentro del body como string JSON
       if (!parsedStatus && body) {
         try {
           const parsed = typeof body === 'string' ? JSON.parse(body) : body;
@@ -360,8 +447,9 @@ const InventarioPage = () => {
       }
       if (parsedStatus === 409) message.error('La unidad ya no está disponible');
       else if (parsedStatus === 429) message.warning('Esta unidad no puede bloquearse nuevamente hasta 24h después de su liberación');
-      else message.error('Error al bloquear unidad');
+      else message.error('Error al procesar la operación');
     } finally {
+      setGuardandoBloqueo(false);
       setBloqueando(null);
     }
   };
@@ -428,17 +516,16 @@ const InventarioPage = () => {
         }
         if (u.estado !== 'disponible') return null;
         return (
-          <Popconfirm
-            title={`Bloquear unidad ${u.id_unidad}`}
-            description="Se bloqueara por 48 horas."
-            okText="Bloquear"
-            cancelText="Cancelar"
-            onConfirm={() => handleBloquear(u)}
+          <Button
+            size="small"
+            icon={<LockOutlined />}
+            loading={bloqueando === u.unidad_id}
+            type="primary"
+            ghost
+            onClick={() => abrirModalBloqueo(u)}
           >
-            <Button size="small" icon={<LockOutlined />} loading={bloqueando === u.unidad_id} type="primary" ghost>
-              Bloquear
-            </Button>
-          </Popconfirm>
+            Bloquear
+          </Button>
         );
       },
     }] : []),
@@ -920,6 +1007,105 @@ const InventarioPage = () => {
             </Select>
           </Form.Item>
         </Form>
+      </Modal>
+
+      {/* ── Modal Bloqueo + Cliente ── */}
+      <Modal
+        title={<Space><LockOutlined /> Bloquear unidad {unidadABloquear?.id_unidad}</Space>}
+        open={modalBloqueo}
+        onCancel={() => { setModalBloqueo(false); formCliente.resetFields(); }}
+        footer={null}
+        width={560}
+      >
+        <Steps
+          current={pasoBloqueo}
+          size="small"
+          style={{ marginBottom: 24 }}
+          items={[
+            { title: 'Confirmar bloqueo' },
+            { title: 'Registrar cliente' },
+          ]}
+        />
+
+        {pasoBloqueo === 0 && (
+          <div>
+            <p>La unidad <strong>{unidadABloquear?.id_unidad}</strong> quedará bloqueada por <strong>48 horas</strong>.</p>
+            <p style={{ color: '#8c8c8c', fontSize: 13 }}>Ninguna otra inmobiliaria podrá bloquearla durante ese tiempo.</p>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 24 }}>
+              <Button onClick={() => setModalBloqueo(false)}>Cancelar</Button>
+              <Button type="primary" onClick={() => setPasoBloqueo(1)}>
+                Continuar
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {pasoBloqueo === 1 && (
+          <div>
+            <p style={{ color: '#8c8c8c', fontSize: 13, marginBottom: 16 }}>
+              Registra el cliente interesado en esta unidad. Puedes omitir este paso si aún no tienes los datos.
+            </p>
+            <Form form={formCliente} layout="vertical">
+              <Row gutter={12}>
+                <Col span={12}>
+                  <Form.Item name="cedula" label="Cédula / Pasaporte" rules={[{ required: true, message: 'Requerido' }]}>
+                    <Input.Search
+                      placeholder="V-12345678"
+                      loading={buscandoCliente}
+                      onSearch={buscarCliente}
+                      onChange={() => { setClienteEncontrado(null); }}
+                    />
+                  </Form.Item>
+                </Col>
+                <Col span={12}>
+                  <Form.Item name="fecha_nacimiento" label="Fecha de nacimiento">
+                    <DatePicker style={{ width: '100%' }} format="DD/MM/YYYY" />
+                  </Form.Item>
+                </Col>
+              </Row>
+              {clienteEncontrado && (
+                <div style={{ background: '#f6ffed', border: '1px solid #b7eb8f', borderRadius: 8, padding: '8px 12px', marginBottom: 12, fontSize: 13 }}>
+                  Cliente encontrado: <strong>{clienteEncontrado.nombres} {clienteEncontrado.apellidos}</strong> — datos precargados
+                </div>
+              )}
+              <Row gutter={12}>
+                <Col span={12}>
+                  <Form.Item name="nombres" label="Nombres" rules={[{ required: true, message: 'Requerido' }]}>
+                    <Input />
+                  </Form.Item>
+                </Col>
+                <Col span={12}>
+                  <Form.Item name="apellidos" label="Apellidos" rules={[{ required: true, message: 'Requerido' }]}>
+                    <Input />
+                  </Form.Item>
+                </Col>
+              </Row>
+              <Row gutter={12}>
+                <Col span={12}>
+                  <Form.Item name="correo" label="Correo">
+                    <Input type="email" />
+                  </Form.Item>
+                </Col>
+                <Col span={12}>
+                  <Form.Item name="telefono" label="Teléfono">
+                    <Input placeholder="+58 412 0000000" />
+                  </Form.Item>
+                </Col>
+              </Row>
+            </Form>
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 8 }}>
+              <Button onClick={() => setPasoBloqueo(0)}>Atrás</Button>
+              <Space>
+                <Button onClick={() => handleBloquear(true)} loading={guardandoBloqueo}>
+                  Omitir cliente
+                </Button>
+                <Button type="primary" icon={<UserOutlined />} onClick={() => handleBloquear(false)} loading={guardandoBloqueo}>
+                  Bloquear y registrar cliente
+                </Button>
+              </Space>
+            </div>
+          </div>
+        )}
       </Modal>
     </div>
   );
