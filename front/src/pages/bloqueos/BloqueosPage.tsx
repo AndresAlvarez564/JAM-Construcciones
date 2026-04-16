@@ -42,8 +42,7 @@ const BloqueosPage = () => {
   const cargar = useCallback(async () => {
     setLoading(true);
     try {
-      const [b, p] = await Promise.all([getBloquesActivos(), getProyectos()]);
-      // Calcular tiempo_restante en cliente si no viene del backend
+      const [b, p, inmos] = await Promise.all([getBloquesActivos(), getProyectos(), getInmobiliarias()]);
       const ahora = Date.now();
       const enriquecidos = b.map(item => ({
         ...item,
@@ -52,6 +51,7 @@ const BloqueosPage = () => {
       }));
       setBloqueos(enriquecidos);
       setProyectos(p);
+      setInmobiliarias(inmos);
     } catch {
       message.error('Error al cargar bloqueos');
     } finally {
@@ -122,8 +122,15 @@ const BloqueosPage = () => {
     }
   };
 
-  const proyectoNombre = (id: string) =>
-    proyectos.find(p => p.proyecto_id === id)?.nombre ?? id;
+  const proyectoNombre = (id: string) => {
+    const clean = id?.replace('PROYECTO#', '');
+    return proyectos.find(p => p.proyecto_id === clean)?.nombre ?? clean ?? id;
+  };
+
+  const inmoNombre = (id: string) => {
+    const inmo = inmobiliarias.find(i => i.pk === id || i.pk === `INMOBILIARIA#${id}` || id === i.pk.replace('INMOBILIARIA#', ''));
+    return inmo?.nombre ?? id;
+  };
 
   const columns = [
     {
@@ -144,7 +151,7 @@ const BloqueosPage = () => {
       title: 'Bloqueado por',
       dataIndex: 'bloqueado_por',
       key: 'bloqueado_por',
-      render: (v: string) => <Tag>{v}</Tag>,
+      render: (v: string) => <Tag>{inmoNombre(v)}</Tag>,
     },
     {
       title: 'Cliente',

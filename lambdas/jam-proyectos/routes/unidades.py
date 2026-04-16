@@ -120,12 +120,19 @@ def eliminar(proyecto_id, unidad_id):
     try:
         inventario.delete_item(
             Key={'pk': f'PROYECTO#{proyecto_id}', 'sk': f'UNIDAD#{unidad_id}'},
-            ConditionExpression='attribute_exists(pk)'
+            ConditionExpression='attribute_exists(pk) AND estado = :disponible',
+            ExpressionAttributeValues={':disponible': 'disponible'}
         )
         return ok({'message': 'Unidad eliminada'})
     except ClientError as e:
         if e.response['Error']['Code'] == 'ConditionalCheckFailedException':
-            return not_found('Unidad no encontrada')
+            # Puede ser que no existe o que está bloqueada/vendida
+            item = inventario.get_item(
+                Key={'pk': f'PROYECTO#{proyecto_id}', 'sk': f'UNIDAD#{unidad_id}'}
+            ).get('Item')
+            if not item:
+                return not_found('Unidad no encontrada')
+            return bad_request(f'No se puede eliminar: la unidad está en estado "{item.get("estado")}"')
         raise
 
 

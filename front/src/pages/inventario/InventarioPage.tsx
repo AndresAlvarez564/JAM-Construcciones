@@ -20,6 +20,8 @@ import {
 } from '../../services/proyectos.service';
 import { bloquearUnidad } from '../../services/bloqueos.service';
 import { registrarCliente, buscarClientePorCedula } from '../../services/clientes.service';
+import { getInmobiliarias } from '../../services/inmobiliarias.service';
+import type { Inmobiliaria } from '../../services/inmobiliarias.service';
 import type { Cliente, Proyecto, Unidad, Etapa, Torre } from '../../types';
 import useAuth from '../../hooks/useAuth';
 
@@ -75,6 +77,7 @@ const InventarioPage = () => {
   const [etapas, setEtapas] = useState<Etapa[]>([]);
   const [torres, setTorres] = useState<Torre[]>([]);
   const [bloqueando, setBloqueando] = useState<string | null>(null);
+  const [inmobiliarias, setInmobiliarias] = useState<Inmobiliaria[]>([]);
   const [modalBloqueo, setModalBloqueo] = useState(false);
   const [unidadABloquear, setUnidadABloquear] = useState<Unidad | null>(null);
   const [pasoBloqueo, setPasoBloqueo] = useState(0);
@@ -109,7 +112,7 @@ const InventarioPage = () => {
   const [etapaEditando, setEtapaEditando] = useState<Etapa | null>(null);
   const [torreEditando, setTorreEditando] = useState<Torre | null>(null);
 
-  useEffect(() => { cargarProyectos(); }, []);
+  useEffect(() => { cargarProyectos(); getInmobiliarias().then(setInmobiliarias).catch(() => {}); }, []);
   useEffect(() => {
     if (proyectoId) cargarEtapasYTorres();
     else { setEtapas([]); setTorres([]); }
@@ -327,7 +330,17 @@ const InventarioPage = () => {
     try {
       await eliminarUnidad(proyectoId, u.unidad_id); message.success('Unidad eliminada');
       await cargarUnidades();
-    } catch { message.error('Error al eliminar unidad'); }
+    } catch (err: any) {
+      const body = err?.response?.body;
+      let msg = 'Error al eliminar unidad';
+      if (body) {
+        try {
+          const parsed = typeof body === 'string' ? JSON.parse(body) : body;
+          if (parsed?.message) msg = parsed.message;
+        } catch { /* ok */ }
+      }
+      message.error(msg);
+    }
   };
 
   const abrirModalBloqueo = (u: Unidad) => {
@@ -454,6 +467,11 @@ const InventarioPage = () => {
     }
   };
 
+  const inmoNombre = (id: string) => {
+    const inmo = inmobiliarias.find(i => i.pk === id || i.pk === `INMOBILIARIA#${id}` || id?.startsWith(i.pk));
+    return inmo?.nombre ?? id;
+  };
+
   // ── Columnas tabla ───────────────────────────────────────────
   const columnaEdificio = {
     title: 'Edificio', dataIndex: 'torre_id', key: 'torre_id',
@@ -490,7 +508,7 @@ const InventarioPage = () => {
       ),
     },
     ...(isAdmin ? [
-      { title: 'Bloqueado por', dataIndex: 'bloqueado_por', key: 'bloqueado_por', render: (v: string) => v ?? <Text type="secondary">—</Text> },
+      { title: 'Bloqueado por', dataIndex: 'bloqueado_por', key: 'bloqueado_por', render: (v: string) => v ? <Tag>{inmoNombre(v)}</Tag> : <Text type="secondary">—</Text> },
       { title: 'Fecha bloqueo', dataIndex: 'fecha_bloqueo', key: 'fecha_bloqueo', render: (v: string) => v ? new Date(v).toLocaleDateString('es-VE') : <Text type="secondary">—</Text> },
     ] : []),
     ...(isAdmin ? [{
