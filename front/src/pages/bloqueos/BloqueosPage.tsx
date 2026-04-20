@@ -2,15 +2,19 @@ import { useEffect, useState, useCallback } from 'react';
 import {
   Typography, Table, Tag, Button, Space, Popconfirm,
   Modal, Form, InputNumber, Input, message, Tooltip, Badge, Tabs,
+  DatePicker, Select, Divider, Radio,
 } from 'antd';
 import {
-  UnlockOutlined, ClockCircleOutlined, ReloadOutlined, FieldTimeOutlined, HistoryOutlined,
+  UnlockOutlined, ClockCircleOutlined, ReloadOutlined, FieldTimeOutlined,
+  HistoryOutlined, UserAddOutlined, SearchOutlined,
 } from '@ant-design/icons';
-import { getBloquesActivos, liberarBloqueo, extenderBloqueo, getHistorialBloqueos } from '../../services/bloqueos.service';
+import dayjs from 'dayjs';
+import { getBloquesActivos, liberarBloqueo, extenderBloqueo, getHistorialBloqueos, bloquearUnidad } from '../../services/bloqueos.service';
 import { getProyectos } from '../../services/proyectos.service';
 import { getInmobiliarias } from '../../services/inmobiliarias.service';
+import { getClientesAdmin } from '../../services/clientes.service';
 import type { Inmobiliaria } from '../../services/inmobiliarias.service';
-import type { Bloqueo, Proyecto, HistorialBloqueo } from '../../types';
+import type { Bloqueo, Proyecto, HistorialBloqueo, Cliente } from '../../types';
 
 const { Title, Text } = Typography;
 
@@ -38,6 +42,15 @@ const BloqueosPage = () => {
   const [modalExtender, setModalExtender] = useState(false);
   const [bloqueoSeleccionado, setBloqueoSeleccionado] = useState<Bloqueo | null>(null);
   const [form] = Form.useForm();
+  const [proyectoFiltro, setProyectoFiltro] = useState<string | undefined>();
+  const [modalAsignarCliente, setModalAsignarCliente] = useState(false);
+  const [bloqueoSinCliente, setBloqueoSinCliente] = useState<Bloqueo | null>(null);
+  const [formCliente] = Form.useForm();
+  const [guardandoCliente, setGuardandoCliente] = useState(false);
+  const [modoAsignar, setModoAsignar] = useState<'existente' | 'nuevo'>('existente');
+  const [clientesInmo, setClientesInmo] = useState<Cliente[]>([]);
+  const [loadingClientes, setLoadingClientes] = useState(false);
+  const [clienteSeleccionado, setClienteSeleccionado] = useState<Cliente | null>(null);
 
   const cargar = useCallback(async () => {
     setLoading(true);
@@ -110,6 +123,93 @@ const BloqueosPage = () => {
     setModalExtender(true);
   };
 
+  const abrirAsignarCliente = async (b: Bloqueo) => {
+    setBloqueoSinCliente(b);
+    formCliente.resetFields();
+    setModoAsignar('existente');
+    setClienteSeleccionado(null);
+    setModalAsignarCliente(true);
+    // Cargar clientes de esa inmobiliaria
+    setLoadingClientes(true);
+    try {
+      const data = await getClientesAdmin({ inmobiliaria_id: b.bloqueado_por });
+      const items = Array.isArray(data) ? data : (data as any).items ?? [];
+      // Filtrar únicos por cédula
+      const vistos = new Set<string>();
+      setClientesInmo(items.filter((c: Cliente) => {
+        if (vistos.has(c.cedula)) return false;
+        vistos.add(c.cedula);
+        return true;
+      }));
+    } catch { setClientesInmo([]); }
+    finally { setLoadingClientes(false); }
+  };
+
+  const handleSeleccionarCliente = (cedula: string) => {
+    const c = clientesInmo.find(x => x.cedula === cedula) ?? null;
+    setClienteSeleccionado(c);
+    if (c) {
+      formCliente.setFieldsValue({
+        cedula: c.cedula,
+        nombres: c.nombres,
+        apellidos: c.apellidos,
+        correo: c.correo,
+        telefono: c.telefono,
+        fecha_nacimiento: c.fecha_nacimiento ? dayjs(c.fecha_nacimiento) : undefined,
+        estado_civil: c.estado_civil,
+        nacionalidad: c.nacionalidad,
+        pais_residencia: c.pais_residencia,
+      });
+    }
+  };
+
+  const handleAsignarCliente = async (values: any) => {
+    if (!bloqueoSinCliente) return;
+    // En modo existente, tomar datos del cliente seleccionado
+    const payload = modoAsignar === 'existente' && clienteSeleccionado
+      ? {
+          cedula: clienteSeleccionado.cedula,
+          nombres: clienteSeleccionado.nombres,
+          apellidos: clienteSeleccionado.apellidos,
+          correo: clienteSeleccionado.correo,
+          telefono: clienteSeleccionado.telefono,
+          fecha_nacimiento: clienteSeleccionado.fecha_nacimiento,
+          estado_civil: clienteSeleccionado.estado_civil,
+          nacionalidad: clienteSeleccionado.nacionalidad,
+          pais_residencia: clienteSeleccionado.pais_residencia,
+        }
+      : {
+          ...values,
+          fecha_nacimiento: values.fecha_nacimiento
+            ? dayjs(values.fecha_nacimiento).format('YYYY-MM-DD')
+            : undefined,
+        };
+
+    if (!payload.cedula) {
+      message.warning('Selecciona un cliente de la lista');
+      return;
+    }
+
+    setGuardandoCliente(true);
+    try {
+      await bloquearUnidad({
+        proyecto_id: bloqueoSinCliente.proyecto_id,
+        unidad_id: bloqueoSinCliente.unidad_id,
+        ...payload,
+      });
+      message.success('Cliente asignado al bloqueo');
+      setModalAsignarCliente(false);
+      setClienteSeleccionado(null);
+      cargar();
+    } catch (err: any) {
+      const status = err?.response?.status ?? err?.response?.statusCode;
+      if (status === 409) message.error('Este cliente tiene exclusividad activa con otra inmobiliaria en este proyecto');
+      else message.error('Error al asignar cliente');
+    } finally {
+      setGuardandoCliente(false);
+    }
+  };
+
   const handleExtender = async (values: { horas_extra: number; justificacion: string }) => {
     if (!bloqueoSeleccionado) return;
     try {
@@ -157,8 +257,8 @@ const BloqueosPage = () => {
       title: 'Cliente',
       dataIndex: 'cliente_cedula',
       key: 'cliente_cedula',
-      render: (v: string) => v
-        ? <Tag color="green">Con cliente</Tag>
+      render: (v: string, r: any) => v
+        ? <span><Tag color="green">Con cliente</Tag>{r.cliente_nombre && <Text type="secondary" style={{ fontSize: 12, marginLeft: 4 }}>{r.cliente_nombre}</Text>}</span>
         : <Tag color="orange">Sin cliente</Tag>,
     },
     {
@@ -194,12 +294,19 @@ const BloqueosPage = () => {
       key: 'acciones',
       render: (_: unknown, record: Bloqueo) => (
         <Space>
+          {!record.cliente_cedula && (
+            <Tooltip title="Asignar cliente a este bloqueo">
+              <Button
+                size="small"
+                icon={<UserAddOutlined />}
+                onClick={() => abrirAsignarCliente(record)}
+              >
+                Asignar cliente
+              </Button>
+            </Tooltip>
+          )}
           <Tooltip title="Extender bloqueo">
-            <Button
-              size="small"
-              icon={<FieldTimeOutlined />}
-              onClick={() => abrirExtender(record)}
-            >
+            <Button size="small" icon={<FieldTimeOutlined />} onClick={() => abrirExtender(record)}>
               Extender
             </Button>
           </Tooltip>
@@ -212,9 +319,7 @@ const BloqueosPage = () => {
             onConfirm={() => handleLiberar(record)}
           >
             <Tooltip title="Liberar manualmente">
-              <Button size="small" danger icon={<UnlockOutlined />}>
-                Liberar
-              </Button>
+              <Button size="small" danger icon={<UnlockOutlined />}>Liberar</Button>
             </Tooltip>
           </Popconfirm>
         </Space>
@@ -226,9 +331,13 @@ const BloqueosPage = () => {
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
         <Title level={4} style={{ margin: 0 }}>Bloqueos</Title>
-        <Button icon={<ReloadOutlined />} onClick={cargar} loading={loading}>
-          Actualizar
-        </Button>
+        <Space>
+          <Select allowClear placeholder="Filtrar por proyecto" style={{ width: 200 }}
+            value={proyectoFiltro} onChange={setProyectoFiltro}>
+            {proyectos.map(p => <Select.Option key={p.proyecto_id} value={p.proyecto_id}>{p.nombre}</Select.Option>)}
+          </Select>
+          <Button icon={<ReloadOutlined />} onClick={cargar} loading={loading}>Actualizar</Button>
+        </Space>
       </div>
 
       <Tabs
@@ -237,10 +346,10 @@ const BloqueosPage = () => {
         items={[
           {
             key: 'activos',
-            label: `Activos (${bloqueos.length})`,
+            label: `Activos (${bloqueos.filter(b => !proyectoFiltro || b.proyecto_id === proyectoFiltro || b.proyecto_id?.replace('PROYECTO#','') === proyectoFiltro).length})`,
             children: (
               <Table
-                dataSource={bloqueos}
+                dataSource={bloqueos.filter(b => !proyectoFiltro || b.proyecto_id === proyectoFiltro || b.proyecto_id?.replace('PROYECTO#','') === proyectoFiltro)}
                 columns={columns}
                 rowKey="unidad_id"
                 loading={loading}
@@ -312,22 +421,111 @@ const BloqueosPage = () => {
           </Text>
         )}
         <Form form={form} layout="vertical" onFinish={handleExtender}>
-          <Form.Item
-            name="horas_extra"
-            label="Horas adicionales"
-            initialValue={24}
-            rules={[{ required: true, message: 'Requerido' }]}
-          >
+          <Form.Item name="horas_extra" label="Horas adicionales" initialValue={24} rules={[{ required: true }]}>
             <InputNumber min={1} max={168} style={{ width: '100%' }} addonAfter="horas" />
           </Form.Item>
-          <Form.Item
-            name="justificacion"
-            label="Justificación"
-            rules={[{ required: true, message: 'La justificación es requerida' }]}
-          >
+          <Form.Item name="justificacion" label="Justificación" rules={[{ required: true, message: 'La justificación es requerida' }]}>
             <Input.TextArea rows={3} placeholder="Motivo de la extensión..." />
           </Form.Item>
         </Form>
+      </Modal>
+
+      <Modal
+        title="Asignar cliente al bloqueo"
+        open={modalAsignarCliente}
+        onCancel={() => { setModalAsignarCliente(false); setClienteSeleccionado(null); }}
+        onOk={() => {
+          if (modoAsignar === 'existente' && !clienteSeleccionado) {
+            message.warning('Selecciona un cliente de la lista');
+            return;
+          }
+          formCliente.submit();
+        }}
+        okText="Asignar"
+        cancelText="Cancelar"
+        confirmLoading={guardandoCliente}
+        width={580}
+      >
+        {bloqueoSinCliente && (
+          <Text type="secondary" style={{ display: 'block', marginBottom: 16 }}>
+            Unidad: <Text strong>{bloqueoSinCliente.id_unidad || bloqueoSinCliente.unidad_id}</Text>
+            {' — '}{proyectoNombre(bloqueoSinCliente.proyecto_id)}
+          </Text>
+        )}
+
+        <Radio.Group
+          value={modoAsignar}
+          onChange={e => { setModoAsignar(e.target.value); formCliente.resetFields(); setClienteSeleccionado(null); }}
+          style={{ marginBottom: 16 }}
+          buttonStyle="solid"
+        >
+          <Radio.Button value="existente"><SearchOutlined /> Cliente existente</Radio.Button>
+          <Radio.Button value="nuevo"><UserAddOutlined /> Nuevo cliente</Radio.Button>
+        </Radio.Group>
+
+        {modoAsignar === 'existente' ? (
+          <div>
+            <Select
+              showSearch
+              style={{ width: '100%' }}
+              placeholder="Buscar por nombre o cédula..."
+              loading={loadingClientes}
+              filterOption={(input, option) =>
+                (option?.label as string ?? '').toLowerCase().includes(input.toLowerCase())
+              }
+              onChange={handleSeleccionarCliente}
+              options={clientesInmo.map(c => ({
+                value: c.cedula,
+                label: `${c.nombres} ${c.apellidos} — ${c.cedula}`,
+              }))}
+            />
+            {clienteSeleccionado && (
+              <div style={{ marginTop: 12, padding: '10px 14px', background: '#f6ffed', border: '1px solid #b7eb8f', borderRadius: 8 }}>
+                <Text strong>{clienteSeleccionado.nombres} {clienteSeleccionado.apellidos}</Text>
+                <br />
+                <Text type="secondary" style={{ fontSize: 12 }}>
+                  {clienteSeleccionado.cedula}
+                  {clienteSeleccionado.correo && ` · ${clienteSeleccionado.correo}`}
+                  {clienteSeleccionado.telefono && ` · ${clienteSeleccionado.telefono}`}
+                </Text>
+              </div>
+            )}
+            {clientesInmo.length === 0 && !loadingClientes && (
+              <Text type="secondary" style={{ fontSize: 12, display: 'block', marginTop: 8 }}>
+                Esta inmobiliaria no tiene clientes registrados aún.
+              </Text>
+            )}
+            {/* Form oculto para submit con la cédula del cliente seleccionado */}
+            <Form form={formCliente} onFinish={handleAsignarCliente}>
+              <Form.Item name="cedula" hidden><Input /></Form.Item>
+            </Form>
+          </div>
+        ) : (
+          <Form form={formCliente} layout="vertical" onFinish={handleAsignarCliente}>
+            <Divider style={{ margin: '0 0 16px' }} />
+            <Form.Item name="cedula" label="Cédula / Pasaporte" rules={[{ required: true }]}>
+              <Input placeholder="V-12345678" />
+            </Form.Item>
+            <Form.Item name="nombres" label="Nombres" rules={[{ required: true }]}><Input /></Form.Item>
+            <Form.Item name="apellidos" label="Apellidos" rules={[{ required: true }]}><Input /></Form.Item>
+            <Form.Item name="correo" label="Correo"><Input type="email" /></Form.Item>
+            <Form.Item name="telefono" label="Teléfono"><Input placeholder="+58 412 0000000" /></Form.Item>
+            <Form.Item name="fecha_nacimiento" label="Fecha de nacimiento">
+              <DatePicker style={{ width: '100%' }} format="DD/MM/YYYY" />
+            </Form.Item>
+            <Form.Item name="estado_civil" label="Estado civil">
+              <Select allowClear placeholder="Selecciona">
+                <Select.Option value="soltero">Soltero/a</Select.Option>
+                <Select.Option value="casado">Casado/a</Select.Option>
+                <Select.Option value="divorciado">Divorciado/a</Select.Option>
+                <Select.Option value="viudo">Viudo/a</Select.Option>
+                <Select.Option value="union_libre">Unión libre</Select.Option>
+              </Select>
+            </Form.Item>
+            <Form.Item name="nacionalidad" label="Nacionalidad"><Input /></Form.Item>
+            <Form.Item name="pais_residencia" label="País de residencia"><Input /></Form.Item>
+          </Form>
+        )}
       </Modal>
     </div>
   );

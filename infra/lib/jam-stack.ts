@@ -194,7 +194,7 @@ export class JamStack extends cdk.Stack {
     clientesTable.addGlobalSecondaryIndex({
       indexName: 'gsi-proyecto-clientes',
       partitionKey: { name: 'proyecto_id', type: dynamodb.AttributeType.STRING },
-      sortKey: { name: 'estado', type: dynamodb.AttributeType.STRING },
+      sortKey: { name: 'fecha_captacion', type: dynamodb.AttributeType.STRING },
     });
 
     // GSI para validar exclusividad: buscar por cedula + sk (PROYECTO#<id>)
@@ -202,6 +202,47 @@ export class JamStack extends cdk.Stack {
       indexName: 'gsi-cedula-proyecto',
       partitionKey: { name: 'cedula', type: dynamodb.AttributeType.STRING },
       sortKey: { name: 'sk', type: dynamodb.AttributeType.STRING },
+    });
+
+    // ─── DYNAMODB jam-historial-estatus ──────────────────────────────────────
+
+    const historialEstatusTable = new dynamodb.Table(this, 'JamHistorialEstatusTable', {
+      tableName: 'jam-historial-estatus',
+      partitionKey: { name: 'pk', type: dynamodb.AttributeType.STRING },
+      sortKey: { name: 'sk', type: dynamodb.AttributeType.STRING },
+      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
+      removalPolicy: cdk.RemovalPolicy.RETAIN,
+    });
+
+    // ─── DYNAMODB jam-procesos ────────────────────────────────────────────────
+
+    const procesosTable = new dynamodb.Table(this, 'JamProcesosTable', {
+      tableName: 'jam-procesos',
+      partitionKey: { name: 'pk', type: dynamodb.AttributeType.STRING },
+      sortKey: { name: 'sk', type: dynamodb.AttributeType.STRING },
+      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
+      removalPolicy: cdk.RemovalPolicy.RETAIN,
+    });
+
+    // GSI para buscar todos los procesos de una cédula (admin sin filtro de inmobiliaria)
+    procesosTable.addGlobalSecondaryIndex({
+      indexName: 'gsi-cedula-procesos',
+      partitionKey: { name: 'cedula', type: dynamodb.AttributeType.STRING },
+      sortKey: { name: 'actualizado_en', type: dynamodb.AttributeType.STRING },
+    });
+
+    // GSI para ver todos los procesos de un proyecto
+    procesosTable.addGlobalSecondaryIndex({
+      indexName: 'gsi-proyecto-procesos',
+      partitionKey: { name: 'proyecto_id', type: dynamodb.AttributeType.STRING },
+      sortKey: { name: 'estado', type: dynamodb.AttributeType.STRING },
+    });
+
+    // GSI para que la inmobiliaria vea sus propios procesos
+    procesosTable.addGlobalSecondaryIndex({
+      indexName: 'gsi-inmobiliaria-procesos',
+      partitionKey: { name: 'inmobiliaria_id', type: dynamodb.AttributeType.STRING },
+      sortKey: { name: 'actualizado_en', type: dynamodb.AttributeType.STRING },
     });
 
     // ─── DYNAMODB jam-historial-bloqueos ─────────────────────────────────────
@@ -231,8 +272,9 @@ export class JamStack extends cdk.Stack {
 
     // ─── LAMBDA jam-bloqueos ─────────────────────────────────────────────────
 
-    // Construir el ARN manualmente para evitar dependencia circular
+    // Construir ARNs manualmente para evitar dependencia circular
     const bloqueosLambdaArn = `arn:aws:lambda:${this.region}:${this.account}:function:jam-bloqueos`;
+    const captacionLambdaArn = `arn:aws:lambda:${this.region}:${this.account}:function:jam-captacion`;
 
     const bloqueosLambda = new lambda.Function(this, 'JamBloqueosLambda', {
       functionName: 'jam-bloqueos',
@@ -248,6 +290,8 @@ export class JamStack extends cdk.Stack {
         BLOQUEOS_LAMBDA_ARN: bloqueosLambdaArn,
         USUARIOS_TABLE: usuariosTable.tableName,
         CLIENTES_TABLE: clientesTable.tableName,
+        PROCESOS_TABLE: procesosTable.tableName,
+        CAPTACION_LAMBDA_ARN: captacionLambdaArn,
       },
     });
 
@@ -255,6 +299,8 @@ export class JamStack extends cdk.Stack {
     historialTable.grantReadWriteData(bloqueosLambda);
     usuariosTable.grantReadData(bloqueosLambda);
     notificacionesQueue.grantSendMessages(bloqueosLambda);
+    clientesTable.grantReadWriteData(bloqueosLambda);
+    procesosTable.grantReadWriteData(bloqueosLambda);
 
     bloqueosLambda.addToRolePolicy(new iam.PolicyStatement({
       actions: ['scheduler:CreateSchedule', 'scheduler:DeleteSchedule'],
@@ -273,8 +319,6 @@ export class JamStack extends cdk.Stack {
 
     // ─── LAMBDA jam-captacion ────────────────────────────────────────────────
 
-    const captacionLambdaArn = `arn:aws:lambda:${this.region}:${this.account}:function:jam-captacion`;
-
     const captacionLambda = new lambda.Function(this, 'JamCaptacionLambda', {
       functionName: 'jam-captacion',
       runtime: lambda.Runtime.PYTHON_3_12,
@@ -285,6 +329,7 @@ export class JamStack extends cdk.Stack {
         CLIENTES_TABLE: clientesTable.tableName,
         USUARIOS_TABLE: usuariosTable.tableName,
         INVENTARIO_TABLE: inventarioTable.tableName,
+        PROCESOS_TABLE: procesosTable.tableName,
         CAPTACION_LAMBDA_ARN: captacionLambdaArn,
         SCHEDULER_ROLE_ARN: schedulerRole.roleArn,
       },
@@ -293,6 +338,7 @@ export class JamStack extends cdk.Stack {
     clientesTable.grantReadWriteData(captacionLambda);
     usuariosTable.grantReadData(captacionLambda);
     inventarioTable.grantReadData(captacionLambda);
+    procesosTable.grantReadWriteData(captacionLambda);
 
     // jam-bloqueos también necesita leer/escribir clientes para desvincular unidades
     clientesTable.grantReadWriteData(bloqueosLambda);
@@ -310,6 +356,32 @@ export class JamStack extends cdk.Stack {
     schedulerRole.addToPolicy(new iam.PolicyStatement({
       actions: ['lambda:InvokeFunction'],
       resources: [captacionLambdaArn],
+    }));
+
+    // ─── LAMBDA jam-crm ──────────────────────────────────────────────────────
+
+    const crmLambda = new lambda.Function(this, 'JamCrmLambda', {
+      functionName: 'jam-crm',
+      runtime: lambda.Runtime.PYTHON_3_12,
+      handler: 'handler.handler',
+      code: lambda.Code.fromAsset(path.join(__dirname, '../../lambdas/jam-crm')),
+      timeout: cdk.Duration.seconds(30),
+      environment: {
+        CLIENTES_TABLE: clientesTable.tableName,
+        PROCESOS_TABLE: procesosTable.tableName,
+        INVENTARIO_TABLE: inventarioTable.tableName,
+        SQS_URL: notificacionesQueue.queueUrl,
+      },
+    });
+
+    clientesTable.grantReadData(crmLambda);
+    procesosTable.grantReadWriteData(crmLambda);
+    inventarioTable.grantReadWriteData(crmLambda);
+    notificacionesQueue.grantSendMessages(crmLambda);
+
+    crmLambda.addToRolePolicy(new iam.PolicyStatement({
+      actions: ['scheduler:DeleteSchedule'],
+      resources: ['*'],
     }));
 
     // ─── API GATEWAY ────────────────────────────────────────────────────────
@@ -335,6 +407,7 @@ export class JamStack extends cdk.Stack {
     const proyectosLambdaIntegration = new apigateway.LambdaIntegration(proyectosLambda);
     const bloqueosLambdaIntegration = new apigateway.LambdaIntegration(bloqueosLambda);
     const captacionLambdaIntegration = new apigateway.LambdaIntegration(captacionLambda);
+    const crmLambdaIntegration = new apigateway.LambdaIntegration(crmLambda);
 
     // /auth
     const authResource = api.root.addResource('auth');
@@ -523,9 +596,20 @@ export class JamStack extends cdk.Stack {
       authorizationType: apigateway.AuthorizationType.COGNITO,
     });
 
+    // /mis-procesos — inmobiliaria ve sus procesos de venta
+    api.root.addResource('mis-procesos').addMethod('GET', captacionLambdaIntegration, {
+      authorizer: cognitoAuthorizer,
+      authorizationType: apigateway.AuthorizationType.COGNITO,
+    });
+
     // /admin/clientes
     const adminClientesResource = adminResource.addResource('clientes');
     adminClientesResource.addMethod('GET', captacionLambdaIntegration, {
+      authorizer: cognitoAuthorizer,
+      authorizationType: apigateway.AuthorizationType.COGNITO,
+    });
+    // /admin/clientes/buscar?cedula=xxx
+    adminClientesResource.addResource('buscar').addMethod('GET', captacionLambdaIntegration, {
       authorizer: cognitoAuthorizer,
       authorizationType: apigateway.AuthorizationType.COGNITO,
     });
@@ -538,6 +622,40 @@ export class JamStack extends cdk.Stack {
       authorizationType: apigateway.AuthorizationType.COGNITO,
     });
     adminClienteProyectoResource.addMethod('PUT', captacionLambdaIntegration, {
+      authorizer: cognitoAuthorizer,
+      authorizationType: apigateway.AuthorizationType.COGNITO,
+    });
+
+    // /admin/clientes/{cedula}/proyecto/{proyecto_id}/estatus y /historial
+    adminClienteProyectoResource.addResource('estatus').addMethod('PUT', crmLambdaIntegration, {
+      authorizer: cognitoAuthorizer,
+      authorizationType: apigateway.AuthorizationType.COGNITO,
+    });
+    adminClienteProyectoResource.addResource('historial').addMethod('GET', crmLambdaIntegration, {
+      authorizer: cognitoAuthorizer,
+      authorizationType: apigateway.AuthorizationType.COGNITO,
+    });
+
+    // /admin/clientes/{cedula}/procesos
+    const adminClienteProcesosResource = adminClienteResource.addResource('procesos');
+    adminClienteProcesosResource.addMethod('GET', crmLambdaIntegration, {
+      authorizer: cognitoAuthorizer,
+      authorizationType: apigateway.AuthorizationType.COGNITO,
+    });
+    adminClienteProcesosResource.addMethod('POST', crmLambdaIntegration, {
+      authorizer: cognitoAuthorizer,
+      authorizationType: apigateway.AuthorizationType.COGNITO,
+    });
+
+    // /admin/clientes/{cedula}/proyecto/{proyecto_id}/unidad/{unidad_id}/estatus y /historial
+    const adminUnidadProcesoResource = adminClienteProyectoResource
+      .addResource('unidad')
+      .addResource('{unidad_id}');
+    adminUnidadProcesoResource.addResource('estatus').addMethod('PUT', crmLambdaIntegration, {
+      authorizer: cognitoAuthorizer,
+      authorizationType: apigateway.AuthorizationType.COGNITO,
+    });
+    adminUnidadProcesoResource.addResource('historial').addMethod('GET', crmLambdaIntegration, {
       authorizer: cognitoAuthorizer,
       authorizationType: apigateway.AuthorizationType.COGNITO,
     });

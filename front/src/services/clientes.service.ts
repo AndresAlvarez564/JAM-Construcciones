@@ -28,10 +28,16 @@ export const getClientes = (proyectoId?: string): Promise<Cliente[]> => {
   return apiGet<Cliente[]>(`/clientes${qs}`);
 };
 
-export const getClientesAdmin = (params?: { proyecto_id?: string; inmobiliaria_id?: string }): Promise<Cliente[]> => {
-  const qs = params ? '?' + new URLSearchParams(Object.entries(params).filter(([, v]) => v) as [string, string][]).toString() : '';
-  return apiGet<Cliente[]>(`/admin/clientes${qs}`);
+export const getClientesAdmin = (params?: { proyecto_id?: string; inmobiliaria_id?: string; next_token?: string; limit?: number }): Promise<{ items: Cliente[]; next_token?: string }> => {
+  const qs = params ? '?' + new URLSearchParams(
+    Object.entries({ ...params, limit: params.limit?.toString() ?? '50' })
+      .filter(([, v]) => v) as [string, string][]
+  ).toString() : '';
+  return apiGet<{ items: Cliente[]; next_token?: string }>(`/admin/clientes${qs}`);
 };
+
+export const buscarClienteAdmin = (cedula: string): Promise<(Cliente & { procesos: any[] })[]> =>
+  apiGet(`/admin/clientes/buscar?cedula=${encodeURIComponent(cedula)}`);
 
 export const actualizarClienteAdmin = (
   cedula: string,
@@ -39,4 +45,4 @@ export const actualizarClienteAdmin = (
   inmobiliariaId: string,
   data: Partial<RegistrarClientePayload & { estado: string }>
 ): Promise<{ message: string }> =>
-  apiPut(`/admin/clientes/${cedula}/proyecto/${proyectoId}?inmobiliaria_id=${inmobiliariaId}`, data);
+  apiPut(`/admin/clientes/${encodeURIComponent(cedula)}/proyecto/${encodeURIComponent(proyectoId)}?inmobiliaria_id=${encodeURIComponent(inmobiliariaId)}`, data);

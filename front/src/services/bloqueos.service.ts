@@ -4,8 +4,18 @@ import type { Bloqueo, HistorialBloqueo } from '../types';
 export const bloquearUnidad = (data: {
   proyecto_id: string;
   unidad_id: string;
-  cliente_cedula?: string;
-}): Promise<Bloqueo> => apiPost<Bloqueo>('/bloqueos', data);
+  // Datos del cliente — opcionales si se bloquea sin cliente
+  cedula?: string;
+  nombres?: string;
+  apellidos?: string;
+  correo?: string;
+  telefono?: string;
+  fecha_nacimiento?: string;
+  estado_civil?: string;
+  nacionalidad?: string;
+  pais_residencia?: string;
+}): Promise<{ unidad_id: string; fecha_liberacion: string; cliente_registrado: boolean; advertencia_cliente?: string }> =>
+  apiPost('/bloqueos', data);
 
 export const getBloquesActivos = (): Promise<Bloqueo[]> =>
   apiGet<Bloqueo[]>('/bloqueos/activos');

@@ -2,10 +2,15 @@ def get_claims(event):
     return event.get('requestContext', {}).get('authorizer', {}).get('claims', {})
 
 
+ROLES_INTERNOS = ('admin', 'coordinador', 'supervisor')
+
 def get_rol(event):
     claims = get_claims(event)
     groups = claims.get('cognito:groups', '')
-    return 'admin' if 'admin' in groups else 'inmobiliaria'
+    for rol in ROLES_INTERNOS:
+        if rol in groups:
+            return rol
+    return 'inmobiliaria'
 
 
 def get_inmobiliaria_id(event):
@@ -15,4 +20,4 @@ def get_inmobiliaria_id(event):
 
 
 def require_admin(event):
-    return get_rol(event) == 'admin'
+    return get_rol(event) in ROLES_INTERNOS

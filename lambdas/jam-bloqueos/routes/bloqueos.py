@@ -7,10 +7,11 @@ from boto3.dynamodb.conditions import Key, Attr
 from utils.response import ok, bad_request, conflict, too_many, not_found
 from utils.auth import get_inmobiliaria_id
 from utils import scheduler as sched
+from utils.clientes import registrar_cliente_y_proceso
 
 dynamodb = boto3.resource('dynamodb')
 inventario = dynamodb.Table(os.environ['INVENTARIO_TABLE'])
-historial = dynamodb.Table(os.environ['HISTORIAL_TABLE'])
+historial_table = dynamodb.Table(os.environ['HISTORIAL_TABLE'])
 usuarios = dynamodb.Table(os.environ['USUARIOS_TABLE'])
 sqs = boto3.client('sqs')
 SQS_URL = os.environ.get('SQS_URL', '')
@@ -21,13 +22,9 @@ HORAS_REBLOQUEO = 24
 
 
 def _get_inmobiliaria_info(sub: str):
-    """Retorna (inmobiliaria_id, inmobiliaria_nombre) dado el sub del usuario."""
     try:
-        item = usuarios.get_item(
-            Key={'pk': f'USUARIO#{sub}', 'sk': 'METADATA'}
-        ).get('Item', {})
+        item = usuarios.get_item(Key={'pk': f'USUARIO#{sub}', 'sk': 'METADATA'}).get('Item', {})
         inmo_id = item.get('inmobiliaria_id', sub)
-        # Obtener nombre de la inmobiliaria
         inmo = usuarios.get_item(Key={'pk': inmo_id, 'sk': 'METADATA'}).get('Item', {})
         return inmo_id, inmo.get('nombre', inmo_id)
     except Exception:
@@ -38,19 +35,27 @@ def bloquear(event):
     body = json.loads(event.get('body') or '{}')
     proyecto_id = body.get('proyecto_id')
     unidad_id = body.get('unidad_id')
-    inmobiliaria_id = get_inmobiliaria_id(event)
+
+    # Datos del cliente (opcionales — puede bloquearse sin cliente)
+    cedula = (body.get('cedula') or '').strip()
+    nombres = (body.get('nombres') or '').strip()
+    apellidos = (body.get('apellidos') or '').strip()
+    tiene_cliente = bool(cedula and nombres and apellidos)
 
     if not all([proyecto_id, unidad_id]):
         return bad_request('proyecto_id y unidad_id son requeridos')
 
-    # Resolver nombre real de la inmobiliaria
+    inmobiliaria_id = get_inmobiliaria_id(event)
     inmo_id, inmo_nombre = _get_inmobiliaria_info(inmobiliaria_id)
 
-    # Resolver nombre legible de la unidad y su torre
+    # Normalizar proyecto_id (sin prefijo para claves, con prefijo para inventario)
+    proyecto_id_clean = proyecto_id.replace('PROYECTO#', '') if proyecto_id else proyecto_id
+
+    # Resolver nombre de la unidad
     unidad_item = inventario.get_item(
         Key={'pk': f'PROYECTO#{proyecto_id}', 'sk': f'UNIDAD#{unidad_id}'}
     ).get('Item', {})
-    unidad_nombre = unidad_item.get('id_unidad') or unidad_id
+    id_unidad = unidad_item.get('id_unidad') or unidad_id
     torre_id = unidad_item.get('torre_id')
     torre_nombre = None
     if torre_id:
@@ -58,63 +63,135 @@ def bloquear(event):
             Key={'pk': f'PROYECTO#{proyecto_id}', 'sk': f'TORRE#{torre_id}'}
         ).get('Item', {})
         torre_nombre = torre_item.get('nombre')
+    unidad_nombre = f"{torre_nombre} · {id_unidad}" if torre_nombre else id_unidad
 
-    # Verificar restricción de re-bloqueo (misma inmo, misma unidad, < 24h)
-    ts_limite = (datetime.now(timezone.utc) - timedelta(hours=HORAS_REBLOQUEO)).isoformat()
-    hist = historial.query(
-        KeyConditionExpression=Key('pk').eq(f'UNIDAD#{unidad_id}'),
-        FilterExpression=Attr('inmobiliaria_id').eq(inmo_id) & Attr('fecha_liberacion').gte(ts_limite),
-        Limit=1,
+    # Si es admin asignando cliente a un bloqueo existente, usar la inmobiliaria del bloqueo
+    from utils.auth import require_admin
+    if require_admin(event) and unidad_item.get('bloqueado_por'):
+        inmo_id_real = unidad_item['bloqueado_por']
+        inmo_info = usuarios.get_item(Key={'pk': inmo_id_real, 'sk': 'METADATA'}).get('Item', {})
+        inmo_id = inmo_id_real
+        inmo_nombre = inmo_info.get('nombre', inmo_id_real)
+
+    # Normalizar proyecto_id (sin prefijo para claves, con prefijo para inventario)
+    proyecto_id_clean = proyecto_id.replace('PROYECTO#', '') if proyecto_id else proyecto_id
+
+    # Validar exclusividad del cliente ANTES de bloquear
+    if tiene_cliente:
+        from boto3.dynamodb.conditions import Key as DKey, Attr as DAttr
+        clientes_table_name = os.environ.get('CLIENTES_TABLE')
+        if clientes_table_name:
+            clientes_t = dynamodb.Table(clientes_table_name)
+            # Verificar primero si el cliente ya existe para esta inmo+proyecto (no hay conflicto)
+            pk_cliente = f'CLIENTE#{cedula}#{inmo_id}'
+            sk_proy = f'PROYECTO#{proyecto_id_clean}'
+            existing_cliente = clientes_t.get_item(Key={'pk': pk_cliente, 'sk': sk_proy}).get('Item')
+            if not existing_cliente:
+                resultado = clientes_t.query(
+                    IndexName='gsi-cedula-proyecto',
+                    KeyConditionExpression=DKey('cedula').eq(cedula) & DKey('sk').eq(sk_proy),
+                    FilterExpression=DAttr('exclusividad_activa').eq(True),
+                )
+                for item in resultado.get('Items', []):
+                    if item.get('inmobiliaria_id') != inmo_id:
+                        return conflict(
+                            'Este cliente tiene exclusividad activa con otra inmobiliaria en este proyecto'
+                        )
+
+    # Validar restricción de re-bloqueo (< 24h) — solo si la unidad NO está ya bloqueada por esta inmo
+    unidad_actual = inventario.get_item(
+        Key={'pk': f'PROYECTO#{proyecto_id}', 'sk': f'UNIDAD#{unidad_id}'}
+    ).get('Item', {})
+    ya_bloqueada_propia = (
+        unidad_actual.get('estado') == 'bloqueada' and
+        unidad_actual.get('bloqueado_por') == inmo_id
     )
-    if hist.get('Items'):
-        return too_many('No puedes re-bloquear esta unidad antes de 24h desde la última liberación')
+
+    if not ya_bloqueada_propia:
+        ts_limite = (datetime.now(timezone.utc) - timedelta(hours=HORAS_REBLOQUEO)).isoformat()
+        hist = historial_table.query(
+            KeyConditionExpression=Key('pk').eq(f'UNIDAD#{unidad_id}'),
+            FilterExpression=Attr('inmobiliaria_id').eq(inmo_id) & Attr('fecha_liberacion').gte(ts_limite),
+            Limit=1,
+        )
+        if hist.get('Items'):
+            return too_many('No puedes re-bloquear esta unidad antes de 24h desde la última liberación')
 
     now = datetime.now(timezone.utc)
     ts_bloqueo = now.isoformat()
     ts_liberacion = (now + timedelta(hours=HORAS_BLOQUEO)).isoformat()
     ts_alerta = (now + timedelta(hours=HORAS_ALERTA)).isoformat()
 
-    # Escritura condicional — solo si estado == disponible
-    try:
-        inventario.update_item(
-            Key={'pk': f'PROYECTO#{proyecto_id}', 'sk': f'UNIDAD#{unidad_id}'},
-            UpdateExpression='SET estado = :bloqueada, bloqueado_por = :inmo, fecha_bloqueo = :ts, fecha_liberacion = :lib, cliente_cedula = :cedula',
-            ConditionExpression='estado = :disponible AND attribute_exists(pk)',
-            ExpressionAttributeValues={
-                ':bloqueada': 'bloqueada',
-                ':disponible': 'disponible',
-                ':inmo': inmo_id,
-                ':ts': ts_bloqueo,
-                ':lib': ts_liberacion,
-                ':cedula': body.get('cliente_cedula', None) or '',
-            },
+    # Escritura condicional — solo si estado == disponible o ya es bloqueo propio
+    if ya_bloqueada_propia:
+        # Solo actualizar cliente_cedula
+        if cedula:
+            inventario.update_item(
+                Key={'pk': f'PROYECTO#{proyecto_id}', 'sk': f'UNIDAD#{unidad_id}'},
+                UpdateExpression='SET cliente_cedula = :cedula',
+                ExpressionAttributeValues={':cedula': cedula},
+            )
+    else:
+        try:
+            inventario.update_item(
+                Key={'pk': f'PROYECTO#{proyecto_id}', 'sk': f'UNIDAD#{unidad_id}'},
+                UpdateExpression='SET estado = :bloqueada, bloqueado_por = :inmo, fecha_bloqueo = :ts, fecha_liberacion = :lib, cliente_cedula = :cedula',
+                ConditionExpression='estado = :disponible AND attribute_exists(pk)',
+                ExpressionAttributeValues={
+                    ':bloqueada': 'bloqueada',
+                    ':disponible': 'disponible',
+                    ':inmo': inmo_id,
+                    ':ts': ts_bloqueo,
+                    ':lib': ts_liberacion,
+                    ':cedula': cedula,
+                },
+            )
+        except ClientError as e:
+            if e.response['Error']['Code'] == 'ConditionalCheckFailedException':
+                return conflict('La unidad no está disponible o ya fue bloqueada por otra inmobiliaria')
+            else:
+                raise
+
+    # Programar schedules en EventBridge (solo si es un bloqueo nuevo)
+    if not ya_bloqueada_propia:
+        sched.crear_schedules(unidad_id, proyecto_id, ts_liberacion[:19], ts_alerta[:19])
+
+    # Registrar en historial (solo si es un bloqueo nuevo)
+    if not ya_bloqueada_propia:
+        historial_table.put_item(Item={
+            'pk': f'UNIDAD#{unidad_id}',
+            'sk': f'BLOQUEO#{ts_bloqueo}',
+            'proyecto_id': proyecto_id,
+            'unidad_id': unidad_id,
+            'unidad_nombre': unidad_nombre,
+            'torre_id': torre_id,
+            'torre_nombre': torre_nombre,
+            'inmobiliaria_id': inmo_id,
+            'inmobiliaria_nombre': inmo_nombre,
+            'fecha_bloqueo': ts_bloqueo,
+            'fecha_liberacion': ts_liberacion,
+            'motivo_liberacion': None,
+            'cliente_cedula': cedula,
+        })
+
+    # Crear cliente y proceso si vienen datos del cliente
+    cliente_advertencia = None
+    if tiene_cliente:
+        datos_cliente = {
+            'nombres': nombres,
+            'apellidos': apellidos,
+            'correo': body.get('correo', ''),
+            'telefono': body.get('telefono', ''),
+            'estado_civil': body.get('estado_civil', ''),
+            'nacionalidad': body.get('nacionalidad', ''),
+            'pais_residencia': body.get('pais_residencia', ''),
+            'fecha_nacimiento': body.get('fecha_nacimiento', ''),
+        }
+        ok_cliente, msg_cliente = registrar_cliente_y_proceso(
+            cedula, inmo_id, proyecto_id_clean, unidad_id, unidad_nombre, datos_cliente
         )
-    except ClientError as e:
-        if e.response['Error']['Code'] == 'ConditionalCheckFailedException':
-            return conflict('La unidad no está disponible o ya fue bloqueada')
-        raise
-
-    # Programar liberación y alerta en EventBridge Scheduler
-    # El timestamp ISO para EventBridge no lleva offset, debe ser UTC sin 'Z' ni '+00:00'
-    ts_lib_eb = ts_liberacion[:19]
-    ts_alerta_eb = ts_alerta[:19]
-    sched.crear_schedules(unidad_id, proyecto_id, ts_lib_eb, ts_alerta_eb)
-
-    # Registrar en historial
-    historial.put_item(Item={
-        'pk': f'UNIDAD#{unidad_id}',
-        'sk': f'BLOQUEO#{ts_bloqueo}',
-        'proyecto_id': proyecto_id,
-        'unidad_id': unidad_id,
-        'unidad_nombre': unidad_nombre,
-        'torre_id': torre_id,
-        'torre_nombre': torre_nombre,
-        'inmobiliaria_id': inmo_id,
-        'inmobiliaria_nombre': inmo_nombre,
-        'fecha_bloqueo': ts_bloqueo,
-        'fecha_liberacion': ts_liberacion,
-        'motivo_liberacion': None,
-    })
+        if not ok_cliente:
+            cliente_advertencia = msg_cliente
 
     # Notificar vía SQS
     if SQS_URL:
@@ -128,17 +205,22 @@ def bloquear(event):
                 'inmobiliaria_nombre': inmo_nombre,
                 'fecha_bloqueo': ts_bloqueo,
                 'fecha_liberacion': ts_liberacion,
+                'cliente_cedula': cedula,
             }),
         )
 
-    return ok({
+    resp = {
         'unidad_id': unidad_id,
         'proyecto_id': proyecto_id,
         'inmobiliaria_id': inmo_id,
-        'inmobiliaria_nombre': inmo_nombre,
         'fecha_bloqueo': ts_bloqueo,
         'fecha_liberacion': ts_liberacion,
-    })
+        'cliente_registrado': tiene_cliente and not cliente_advertencia,
+    }
+    if cliente_advertencia:
+        resp['advertencia_cliente'] = cliente_advertencia
+
+    return ok(resp)
 
 
 def listar_activos(event):
@@ -154,7 +236,7 @@ def listar_activos(event):
         if not item.get('unidad_id') and item.get('sk', '').startswith('UNIDAD#'):
             item['unidad_id'] = item['sk'].replace('UNIDAD#', '')
 
-    # Resolver nombres de torres con batch_get_item (deduplicar keys)
+    # Resolver nombres de torres
     keys_torres_map = {
         f"{item['pk']}#{item['torre_id']}": {'pk': item['pk'], 'sk': f'TORRE#{item["torre_id"]}'}
         for item in items if item.get('torre_id') and item.get('pk')
@@ -171,5 +253,23 @@ def listar_activos(event):
         for item in items:
             if item.get('torre_id'):
                 item['torre_nombre'] = torre_map.get(f'TORRE#{item["torre_id"]}')
+
+    # Resolver nombre del cliente vinculado
+    clientes_table_name = os.environ.get('CLIENTES_TABLE')
+    if clientes_table_name:
+        clientes_t = dynamodb.Table(clientes_table_name)
+        for item in items:
+            cedula = item.get('cliente_cedula', '')
+            inmo_id = item.get('bloqueado_por', '')
+            proyecto_id = item.get('proyecto_id') or item.get('pk', '').replace('PROYECTO#', '')
+            if cedula and inmo_id and proyecto_id:
+                try:
+                    cliente = clientes_t.get_item(
+                        Key={'pk': f'CLIENTE#{cedula}#{inmo_id}', 'sk': f'PROYECTO#{proyecto_id}'}
+                    ).get('Item', {})
+                    if cliente:
+                        item['cliente_nombre'] = f"{cliente.get('nombres', '')} {cliente.get('apellidos', '')}".strip()
+                except Exception:
+                    pass
 
     return ok(items)

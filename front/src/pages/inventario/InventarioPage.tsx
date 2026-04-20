@@ -19,7 +19,7 @@ import {
   getPresignedImagenProyecto,
 } from '../../services/proyectos.service';
 import { bloquearUnidad } from '../../services/bloqueos.service';
-import { registrarCliente, buscarClientePorCedula } from '../../services/clientes.service';
+import { buscarClientePorCedula } from '../../services/clientes.service';
 import { getInmobiliarias } from '../../services/inmobiliarias.service';
 import type { Inmobiliaria } from '../../services/inmobiliarias.service';
 import type { Cliente, Proyecto, Unidad, Etapa, Torre } from '../../types';
@@ -381,22 +381,42 @@ const InventarioPage = () => {
     if (!unidadABloquear) return;
     setGuardandoBloqueo(true);
     try {
-      // Obtener cédula del form si hay cliente
-      let cedula: string | undefined;
+      let payload: any = {
+        proyecto_id: proyectoId,
+        unidad_id: unidadABloquear.unidad_id,
+      };
+
       if (!omitirCliente) {
-        const values = formCliente.getFieldsValue();
-        cedula = values.cedula?.trim();
+        let values: any;
+        try {
+          values = await formCliente.validateFields();
+        } catch {
+          message.warning('Completa los campos requeridos del cliente (cédula, nombres, apellidos)');
+          setGuardandoBloqueo(false);
+          return;
+        }
+        payload = {
+          ...payload,
+          cedula: values.cedula?.trim(),
+          nombres: values.nombres?.trim(),
+          apellidos: values.apellidos?.trim(),
+          correo: values.correo,
+          telefono: values.telefono,
+          fecha_nacimiento: values.fecha_nacimiento
+            ? dayjs(values.fecha_nacimiento).format('YYYY-MM-DD')
+            : undefined,
+          estado_civil: values.estado_civil,
+          nacionalidad: values.nacionalidad,
+          pais_residencia: values.pais_residencia,
+        };
       }
 
-      // Paso 1: bloquear unidad (pasar cédula si existe)
+      // Un solo request — bloquea + registra cliente
       let intentos = 0;
+      let resultado: any;
       while (intentos < 2) {
         try {
-          await bloquearUnidad({
-            proyecto_id: proyectoId,
-            unidad_id: unidadABloquear.unidad_id,
-            ...(cedula ? { cliente_cedula: cedula } : {}),
-          });
+          resultado = await bloquearUnidad(payload);
           break;
         } catch (err: any) {
           const status = err?.response?.statusCode ?? err?.response?.status ?? err?.statusCode;
@@ -409,35 +429,10 @@ const InventarioPage = () => {
         }
       }
 
-      // Paso 2: registrar cliente si no se omitió
-      if (!omitirCliente) {
-        let values: any;
-        try {
-          values = await formCliente.validateFields();
-        } catch {
-          // Validación falló — campos requeridos vacíos
-          message.warning('Completa los campos requeridos del cliente (cédula, nombres, apellidos)');
-          setGuardandoBloqueo(false);
-          return;
-        }
-        try {
-          await registrarCliente({
-            ...values,
-            proyecto_id: proyectoId,
-            unidad_id: unidadABloquear.unidad_id,
-            fecha_nacimiento: values.fecha_nacimiento
-              ? dayjs(values.fecha_nacimiento).format('YYYY-MM-DD')
-              : undefined,
-          });
-          message.success(`Unidad ${unidadABloquear.id_unidad} bloqueada y cliente registrado`);
-        } catch (clienteErr: any) {
-          const s = clienteErr?.response?.status ?? clienteErr?.response?.statusCode;
-          if (s === 409) {
-            message.warning('Unidad bloqueada. El cliente ya tiene exclusividad activa con otra inmobiliaria en este proyecto.');
-          } else {
-            message.warning(`Unidad bloqueada pero no se pudo registrar el cliente: ${s ?? 'error'}`);
-          }
-        }
+      if (resultado?.advertencia_cliente) {
+        message.warning(`Unidad bloqueada. ${resultado.advertencia_cliente}`);
+      } else if (!omitirCliente && resultado?.cliente_registrado) {
+        message.success(`Unidad ${unidadABloquear.id_unidad} bloqueada y cliente registrado`);
       } else {
         message.success(`Unidad ${unidadABloquear.id_unidad} bloqueada por 48h`);
       }
@@ -458,7 +453,7 @@ const InventarioPage = () => {
           parsedStatus = parsed?.statusCode;
         } catch { /* ok */ }
       }
-      if (parsedStatus === 409) message.error('La unidad ya no está disponible');
+      if (parsedStatus === 409) message.error('La unidad ya no está disponible o el cliente tiene exclusividad con otra inmobiliaria');
       else if (parsedStatus === 429) message.warning('Esta unidad no puede bloquearse nuevamente hasta 24h después de su liberación');
       else message.error('Error al procesar la operación');
     } finally {

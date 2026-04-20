@@ -104,10 +104,27 @@ export interface Bloqueo {
 
 export type EstadoCliente = 'captacion' | 'disponible' | 'reserva' | 'separacion' | 'inicial' | 'desvinculado';
 
-export interface UnidadVinculada {
+export interface HistorialProcesoEntry {
+  estatus_anterior: string;
+  estatus_nuevo: string;
+  ejecutado_por: string;
+  ejecutado_por_nombre: string;
+  notificacion_enviada: boolean;
+  timestamp: string;
+}
+
+export interface Proceso {
+  pk: string;
+  sk: string;
+  cedula: string;
+  inmobiliaria_id: string;
+  proyecto_id: string;
   unidad_id: string;
   unidad_nombre: string;
-  fecha_vinculacion: string;
+  estado: EstadoCliente;
+  historial: HistorialProcesoEntry[];
+  fecha_inicio: string;
+  actualizado_en: string;
 }
 
 export interface Cliente {
@@ -125,8 +142,6 @@ export interface Cliente {
   pais_residencia?: string;
   fecha_nacimiento?: string;
   edad?: number;
-  unidades?: UnidadVinculada[];
-  estado: EstadoCliente;
   exclusividad_activa: boolean;
   fecha_captacion: string;
   fecha_vencimiento: string;
