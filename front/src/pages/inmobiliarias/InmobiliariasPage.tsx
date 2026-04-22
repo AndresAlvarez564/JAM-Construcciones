@@ -6,6 +6,7 @@ import {
 import {
   PlusOutlined, EditOutlined, StopOutlined, CheckOutlined,
   DeleteOutlined, UserOutlined, TeamOutlined, MailOutlined, ReloadOutlined,
+  LinkOutlined,
 } from '@ant-design/icons';
 import {
   getInmobiliarias, crearInmobiliaria, actualizarInmobiliaria,
@@ -239,9 +240,28 @@ const InmobiliariasPage = () => {
                   )}
 
                   {/* Footer */}
-                  <div style={{ marginTop: 12, paddingTop: 10, borderTop: '1px solid #f5f5f5', display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <TeamOutlined style={{ color: '#aaa', fontSize: 13 }} />
-                    <Text type="secondary" style={{ fontSize: 12 }}>Ver usuarios</Text>
+                  <div style={{ marginTop: 12, paddingTop: 10, borderTop: '1px solid #f5f5f5', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <TeamOutlined style={{ color: '#aaa', fontSize: 13 }} />
+                      <Text type="secondary" style={{ fontSize: 12 }}>Ver usuarios</Text>
+                    </div>
+                    <Tooltip title="Copiar enlace de registro para clientes">
+                      <Button
+                        size="small"
+                        type="text"
+                        icon={<LinkOutlined />}
+                        onClick={e => {
+                          e.stopPropagation();
+                          const id = inmo.pk.replace('INMOBILIARIA#', '');
+                          const url = `${window.location.origin}/captura?inmo=${id}`;
+                          navigator.clipboard.writeText(url);
+                          message.success('Enlace copiado');
+                        }}
+                        style={{ fontSize: 12, color: '#1677ff' }}
+                      >
+                        Copiar enlace
+                      </Button>
+                    </Tooltip>
                   </div>
                 </div>
               </div>

@@ -415,10 +415,19 @@ const BloqueosPage = () => {
         cancelText="Cancelar"
       >
         {bloqueoSeleccionado && (
-          <Text type="secondary" style={{ display: 'block', marginBottom: 16 }}>
-            Unidad: <Text strong>{bloqueoSeleccionado.id_unidad || bloqueoSeleccionado.unidad_id}</Text>
-            {' — '}Vence: {new Date(bloqueoSeleccionado.fecha_liberacion).toLocaleString('es-VE')}
-          </Text>
+          <div style={{
+            background: '#f0f5ff', border: '1px solid #adc6ff', borderRadius: 8,
+            padding: '10px 14px', marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+          }}>
+            <div>
+              <Text type="secondary" style={{ fontSize: 11 }}>UNIDAD</Text>
+              <div><Text strong>{bloqueoSeleccionado.id_unidad || bloqueoSeleccionado.unidad_id}</Text></div>
+            </div>
+            <div style={{ textAlign: 'right' }}>
+              <Text type="secondary" style={{ fontSize: 11 }}>VENCE ACTUALMENTE</Text>
+              <div><Text>{new Date(bloqueoSeleccionado.fecha_liberacion).toLocaleString('es-VE')}</Text></div>
+            </div>
+          </div>
         )}
         <Form form={form} layout="vertical" onFinish={handleExtender}>
           <Form.Item name="horas_extra" label="Horas adicionales" initialValue={24} rules={[{ required: true }]}>
@@ -447,10 +456,19 @@ const BloqueosPage = () => {
         width={580}
       >
         {bloqueoSinCliente && (
-          <Text type="secondary" style={{ display: 'block', marginBottom: 16 }}>
-            Unidad: <Text strong>{bloqueoSinCliente.id_unidad || bloqueoSinCliente.unidad_id}</Text>
-            {' — '}{proyectoNombre(bloqueoSinCliente.proyecto_id)}
-          </Text>
+          <div style={{
+            background: '#fffbe6', border: '1px solid #ffe58f', borderRadius: 8,
+            padding: '10px 14px', marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+          }}>
+            <div>
+              <Text type="secondary" style={{ fontSize: 11 }}>UNIDAD</Text>
+              <div><Text strong>{bloqueoSinCliente.id_unidad || bloqueoSinCliente.unidad_id}</Text></div>
+            </div>
+            <div style={{ textAlign: 'right' }}>
+              <Text type="secondary" style={{ fontSize: 11 }}>PROYECTO</Text>
+              <div><Text>{proyectoNombre(bloqueoSinCliente.proyecto_id)}</Text></div>
+            </div>
+          </div>
         )}
 
         <Radio.Group

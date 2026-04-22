@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import {
   Typography, Table, Tag, Button, Modal, Form, Input, Select,
-  DatePicker, message, Space, Tooltip, Drawer, Descriptions, Spin,
+  DatePicker, message, Space, Tooltip, Drawer, Spin,
 } from 'antd';
 import {
   PlusOutlined, ReloadOutlined, UserOutlined, HistoryOutlined,
@@ -229,8 +229,9 @@ const ClientesPage = () => {
       setModalOpen(false); form.resetFields();
       cargar(proyectoFiltro);
     } catch (err: any) {
-      if (err?.response?.status === 409) message.error('Este cliente tiene exclusividad activa en este proyecto.');
-      else message.error('Error al registrar cliente');
+      const msg = err?.response?.data?.message || err?.response?.data?.error;
+      if (err?.response?.status === 409) message.error(msg || 'Este cliente tiene exclusividad activa en este proyecto.');
+      else message.error(msg || 'Error al registrar cliente');
     }
   };
 
@@ -364,20 +365,55 @@ const ClientesPage = () => {
           <div key={`${reg.pk}#${reg.sk}`} style={{ marginBottom: 24 }}>
             {idx === 0 && (
               <>
-                {/* Datos personales — solo del primer registro */}
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                {/* Datos personales */}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
                   <Title level={5} style={{ margin: 0 }}>Datos personales</Title>
                   <Button size="small" icon={<EditOutlined />} onClick={() => abrirEditar(reg)}>Editar</Button>
                 </div>
-                <Descriptions column={1} size="small" style={{ marginBottom: 20 }}>
-                  <Descriptions.Item label="Cédula">{reg.cedula}</Descriptions.Item>
-                  {reg.correo && <Descriptions.Item label="Correo">{reg.correo}</Descriptions.Item>}
-                  {reg.telefono && <Descriptions.Item label="Teléfono">{reg.telefono}</Descriptions.Item>}
-                  {reg.edad && <Descriptions.Item label="Edad">{reg.edad} años</Descriptions.Item>}
-                  {reg.estado_civil && <Descriptions.Item label="Estado civil">{reg.estado_civil}</Descriptions.Item>}
-                  {reg.nacionalidad && <Descriptions.Item label="Nacionalidad">{reg.nacionalidad}</Descriptions.Item>}
-                  {reg.pais_residencia && <Descriptions.Item label="País residencia">{reg.pais_residencia}</Descriptions.Item>}
-                </Descriptions>
+                <div style={{ background: '#fafafa', border: '1px solid #f0f0f0', borderRadius: 8, padding: '12px 14px', marginBottom: 20 }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px 16px' }}>
+                    <div>
+                      <Text type="secondary" style={{ fontSize: 11 }}>CÉDULA</Text>
+                      <div><Text strong>{reg.cedula}</Text></div>
+                    </div>
+                    {reg.correo && (
+                      <div>
+                        <Text type="secondary" style={{ fontSize: 11 }}>CORREO</Text>
+                        <div><Text>{reg.correo}</Text></div>
+                      </div>
+                    )}
+                    {reg.telefono && (
+                      <div>
+                        <Text type="secondary" style={{ fontSize: 11 }}>TELÉFONO</Text>
+                        <div><Text>{reg.telefono}</Text></div>
+                      </div>
+                    )}
+                    {reg.edad && (
+                      <div>
+                        <Text type="secondary" style={{ fontSize: 11 }}>EDAD</Text>
+                        <div><Text>{reg.edad} años</Text></div>
+                      </div>
+                    )}
+                    {reg.estado_civil && (
+                      <div>
+                        <Text type="secondary" style={{ fontSize: 11 }}>ESTADO CIVIL</Text>
+                        <div><Text style={{ textTransform: 'capitalize' }}>{reg.estado_civil.replace('_', ' ')}</Text></div>
+                      </div>
+                    )}
+                    {reg.nacionalidad && (
+                      <div>
+                        <Text type="secondary" style={{ fontSize: 11 }}>NACIONALIDAD</Text>
+                        <div><Text>{reg.nacionalidad}</Text></div>
+                      </div>
+                    )}
+                    {reg.pais_residencia && (
+                      <div>
+                        <Text type="secondary" style={{ fontSize: 11 }}>PAÍS RESIDENCIA</Text>
+                        <div><Text>{reg.pais_residencia}</Text></div>
+                      </div>
+                    )}
+                  </div>
+                </div>
                 <Title level={5} style={{ marginBottom: 12 }}>Registros por proyecto</Title>
               </>
             )}
@@ -431,17 +467,38 @@ const ClientesPage = () => {
       >
         {drawerCliente && (
           <div>
-            <Descriptions column={1} size="small" style={{ marginBottom: 16 }}>
-              <Descriptions.Item label="Cédula">{drawerCliente.cedula}</Descriptions.Item>
-              {drawerCliente.correo && <Descriptions.Item label="Correo">{drawerCliente.correo}</Descriptions.Item>}
-              {drawerCliente.telefono && <Descriptions.Item label="Teléfono">{drawerCliente.telefono}</Descriptions.Item>}
-              <Descriptions.Item label="Proyecto">{proyectoNombre(drawerCliente.proyecto_id)}</Descriptions.Item>
-              <Descriptions.Item label="Exclusividad">
-                {drawerCliente.exclusividad_activa
-                  ? <Tag color="green">Activa hasta {dayjs(drawerCliente.fecha_vencimiento).format('DD/MM/YYYY')}</Tag>
-                  : <Tag>Vencida</Tag>}
-              </Descriptions.Item>
-            </Descriptions>
+            <div style={{ background: '#fafafa', border: '1px solid #f0f0f0', borderRadius: 8, padding: '12px 14px', marginBottom: 16 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px 16px' }}>
+                <div>
+                  <Text type="secondary" style={{ fontSize: 11 }}>CÉDULA</Text>
+                  <div><Text strong>{drawerCliente.cedula}</Text></div>
+                </div>
+                {drawerCliente.correo && (
+                  <div>
+                    <Text type="secondary" style={{ fontSize: 11 }}>CORREO</Text>
+                    <div><Text>{drawerCliente.correo}</Text></div>
+                  </div>
+                )}
+                {drawerCliente.telefono && (
+                  <div>
+                    <Text type="secondary" style={{ fontSize: 11 }}>TELÉFONO</Text>
+                    <div><Text>{drawerCliente.telefono}</Text></div>
+                  </div>
+                )}
+                <div>
+                  <Text type="secondary" style={{ fontSize: 11 }}>PROYECTO</Text>
+                  <div><Text>{proyectoNombre(drawerCliente.proyecto_id)}</Text></div>
+                </div>
+                <div style={{ gridColumn: '1 / -1' }}>
+                  <Text type="secondary" style={{ fontSize: 11 }}>EXCLUSIVIDAD</Text>
+                  <div style={{ marginTop: 2 }}>
+                    {drawerCliente.exclusividad_activa
+                      ? <Tag color="green">Activa hasta {dayjs(drawerCliente.fecha_vencimiento).format('DD/MM/YYYY')}</Tag>
+                      : <Tag color="default">Vencida</Tag>}
+                  </div>
+                </div>
+              </div>
+            </div>
             {drawerProcesos.length > 0 && (
               <>
                 <Title level={5} style={{ marginBottom: 8 }}>Procesos de venta</Title>

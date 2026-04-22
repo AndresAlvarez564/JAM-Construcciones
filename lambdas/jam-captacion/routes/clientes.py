@@ -412,3 +412,95 @@ def listar_mis_procesos(event):
 
     result = procesos.query(**kwargs)
     return ok(result.get('Items', []))
+
+
+def registrar_publico(event):
+    """POST /publico/clientes — registro externo sin auth, inmobiliaria_id viene en el body."""
+    body = json.loads(event.get('body') or '{}')
+    cedula = body.get('cedula', '').strip()
+    proyecto_id = body.get('proyecto_id', '').strip()
+    nombres = body.get('nombres', '').strip()
+    apellidos = body.get('apellidos', '').strip()
+    # Normalizar: quitar prefijo si viene con él
+    inmobiliaria_id = body.get('inmobiliaria_id', '').strip().replace('INMOBILIARIA#', '')
+
+    if not all([cedula, proyecto_id, nombres, apellidos, inmobiliaria_id]):
+        return bad_request('cedula, proyecto_id, nombres, apellidos e inmobiliaria_id son requeridos')
+
+    # Verificar que la inmobiliaria existe y está activa
+    try:
+        inmo_table = dynamodb.Table(os.environ['USUARIOS_TABLE'])
+        inmo = inmo_table.get_item(
+            Key={'pk': f'INMOBILIARIA#{inmobiliaria_id}', 'sk': 'METADATA'}
+        ).get('Item')
+        if not inmo or not inmo.get('activo', True):
+            return bad_request('Inmobiliaria no válida')
+    except Exception:
+        return bad_request('Inmobiliaria no válida')
+
+    pk = f'CLIENTE#{cedula}#{inmobiliaria_id}'
+    sk = f'PROYECTO#{proyecto_id}'
+
+    existing = clientes.get_item(Key={'pk': pk, 'sk': sk}).get('Item')
+
+    # También buscar con prefijo por si fue registrado internamente
+    if not existing:
+        existing = clientes.get_item(
+            Key={'pk': f'CLIENTE#{cedula}#INMOBILIARIA#{inmobiliaria_id}', 'sk': sk}
+        ).get('Item')
+        if existing:
+            pk = f'CLIENTE#{cedula}#INMOBILIARIA#{inmobiliaria_id}'
+
+    if existing:
+        if existing.get('exclusividad_activa'):
+            return _actualizar_datos(pk, sk, body, existing)
+        else:
+            return _recaptar(pk, sk, body, existing, cedula, inmobiliaria_id, proyecto_id)
+
+    # Verificar exclusividad activa de OTRA inmobiliaria
+    # Normalizar para comparar sin prefijo
+    resultado = clientes.query(
+        IndexName='gsi-cedula-proyecto',
+        KeyConditionExpression=Key('cedula').eq(cedula) & Key('sk').eq(sk),
+        FilterExpression=Attr('exclusividad_activa').eq(True),
+    )
+    for item in resultado.get('Items', []):
+        item_inmo = item.get('inmobiliaria_id', '').replace('INMOBILIARIA#', '')
+        if item_inmo != inmobiliaria_id:
+            return conflict(
+                'Este cliente tiene exclusividad activa con otra inmobiliaria en este proyecto. '
+                'Contacta a JAM Construcciones.'
+            )
+
+    return _crear(pk, sk, body, cedula, inmobiliaria_id, proyecto_id)
+
+
+def listar_proyectos_publico(event):
+    """GET /publico/proyectos?inmobiliaria_id=xxx — proyectos asignados a la inmobiliaria (sin auth)."""
+    qs = event.get('queryStringParameters') or {}
+    inmobiliaria_id = qs.get('inmobiliaria_id', '').strip()
+    if not inmobiliaria_id:
+        return bad_request('inmobiliaria_id es requerido')
+
+    try:
+        inmo_table = dynamodb.Table(os.environ['USUARIOS_TABLE'])
+        inmo = inmo_table.get_item(
+            Key={'pk': f'INMOBILIARIA#{inmobiliaria_id}', 'sk': 'METADATA'}
+        ).get('Item')
+        if not inmo or not inmo.get('activo', True):
+            return bad_request('Inmobiliaria no válida')
+
+        proyectos_ids = inmo.get('proyectos', [])
+        print(f'DEBUG inmo pk=INMOBILIARIA#{inmobiliaria_id} proyectos={proyectos_ids}')
+        proy_table = dynamodb.Table(os.environ['INVENTARIO_TABLE'])
+        result = []
+        for pid in proyectos_ids:
+            item = proy_table.get_item(
+                Key={'pk': f'PROYECTO#{pid}', 'sk': 'METADATA'}
+            ).get('Item')
+            if item and item.get('activo', True):
+                result.append({'proyecto_id': pid, 'nombre': item.get('nombre', pid)})
+        return ok(result)
+    except Exception as e:
+        print(f'ERROR listar_proyectos_publico: {type(e).__name__}: {e}')
+        return bad_request('Error al obtener proyectos')

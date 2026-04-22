@@ -11,6 +11,7 @@ import InmobiliariasPage from './pages/inmobiliarias/InmobiliariasPage';
 import UsuariosSistemaPage from './pages/sistema/UsuariosSistemaPage';
 import ReportesPage from './pages/reportes/ReportesPage';
 import BloqueosPage from './pages/bloqueos/BloqueosPage';
+import CapturaPage from './pages/captura/CapturaPage';
 
 const App = () => (
   <BrowserRouter>
@@ -18,6 +19,7 @@ const App = () => (
       <Routes>
         <Route path="/login" element={<LoginPage />} />
         <Route path="/unauthorized" element={<UnauthorizedPage />} />
+        <Route path="/captura" element={<CapturaPage />} />
         <Route
           path="/"
           element={

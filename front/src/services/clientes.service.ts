@@ -46,3 +46,22 @@ export const actualizarClienteAdmin = (
   data: Partial<RegistrarClientePayload & { estado: string }>
 ): Promise<{ message: string }> =>
   apiPut(`/admin/clientes/${encodeURIComponent(cedula)}/proyecto/${encodeURIComponent(proyectoId)}?inmobiliaria_id=${encodeURIComponent(inmobiliariaId)}`, data);
+
+export const getProyectosPublico = async (inmobiliariaId: string): Promise<{ proyecto_id: string; nombre: string }[]> => {
+  const res = await fetch(`${(await import('../config')).default.apiUrl}/publico/proyectos?inmobiliaria_id=${encodeURIComponent(inmobiliariaId)}`);
+  const data = await res.json();
+  if (!res.ok) throw Object.assign(new Error(data?.message || 'Error'), { response: { status: res.status, data } });
+  return data;
+};
+
+export const registrarClientePublico = async (data: RegistrarClientePayload & { inmobiliaria_id: string }): Promise<Cliente> => {
+  const cfg = await import('../config');
+  const res = await fetch(`${cfg.default.apiUrl}/publico/clientes`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+  const json = await res.json();
+  if (!res.ok) throw Object.assign(new Error(json?.message || 'Error'), { response: { status: res.status, data: json } });
+  return json;
+};

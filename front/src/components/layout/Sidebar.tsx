@@ -1,8 +1,8 @@
-import { Avatar, Typography } from 'antd';
+import { Avatar, Typography, Tooltip, message } from 'antd';
 import {
   AppstoreOutlined, TeamOutlined, DashboardOutlined,
   BarChartOutlined, BankOutlined, UserOutlined, PoweroffOutlined,
-  LockOutlined,
+  LockOutlined, LinkOutlined,
 } from '@ant-design/icons';
 import { useNavigate, useLocation } from 'react-router-dom';
 import useAuth from '../../hooks/useAuth';
@@ -120,6 +120,32 @@ const Sidebar = ({ onSelect }: Props) => {
           </div>
         ))}
       </div>
+
+      {/* Enlace de captura — solo inmobiliaria */}
+      {rol === 'inmobiliaria' && usuario?.inmobiliaria_id && (
+        <Tooltip title="Copia el enlace para que tus clientes se registren" placement="right">
+          <div
+            onClick={() => {
+              const id = (usuario.inmobiliaria_id ?? '').replace('INMOBILIARIA#', '');
+              const url = `${window.location.origin}/captura?inmo=${id}`;
+              navigator.clipboard.writeText(url);
+              message.success('Enlace copiado');
+            }}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 10,
+              padding: '10px 14px', borderRadius: 10, cursor: 'pointer',
+              color: '#1677ff', fontSize: 14, marginBottom: 8,
+              background: '#f0f5ff', border: '1px dashed #adc6ff',
+              transition: 'all 0.15s',
+            }}
+            onMouseEnter={e => { (e.currentTarget as HTMLDivElement).style.background = '#e6f0ff'; }}
+            onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.background = '#f0f5ff'; }}
+          >
+            <LinkOutlined style={{ fontSize: 15 }} />
+            <span style={{ fontWeight: 500 }}>Copiar enlace de registro</span>
+          </div>
+        </Tooltip>
+      )}
 
       {/* Logout */}
       <div

@@ -1,5 +1,5 @@
-import { Drawer, Timeline, Tag, Typography, Empty } from 'antd';
-import { CheckCircleOutlined, CloseCircleOutlined } from '@ant-design/icons';
+import { Drawer, Timeline, Tag, Typography, Empty, Space } from 'antd';
+import { CheckCircleOutlined, CloseCircleOutlined, UserOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import type { Proceso } from '../../types';
 
@@ -27,7 +27,18 @@ const HistorialEstatusDrawer = ({ open, proceso, clienteNombre, onClose }: Props
 
   return (
     <Drawer
-      title={`Historial — ${clienteNombre} · ${proceso?.unidad_nombre || proceso?.unidad_id || ''}`}
+      title={
+        <div>
+          <Text strong>{clienteNombre}</Text>
+          {proceso && (
+            <div style={{ marginTop: 2 }}>
+              <Tag color="geekblue" style={{ margin: 0, fontSize: 12 }}>
+                {proceso.unidad_nombre || proceso.unidad_id}
+              </Tag>
+            </div>
+          )}
+        </div>
+      }
       open={open}
       onClose={onClose}
       width={420}
@@ -39,19 +50,41 @@ const HistorialEstatusDrawer = ({ open, proceso, clienteNombre, onClose }: Props
           items={historial.map(h => ({
             color: ESTADO_COLOR[h.estatus_nuevo] ?? 'gray',
             children: (
-              <div>
-                <div>
-                  <Tag color={ESTADO_COLOR[h.estatus_anterior]}>{ESTADO_LABEL[h.estatus_anterior] ?? h.estatus_anterior}</Tag>
-                  {' → '}
-                  <Tag color={ESTADO_COLOR[h.estatus_nuevo]}>{ESTADO_LABEL[h.estatus_nuevo] ?? h.estatus_nuevo}</Tag>
+              <div style={{
+                background: '#fafafa', border: '1px solid #f0f0f0',
+                borderRadius: 8, padding: '10px 12px', marginBottom: 4,
+              }}>
+                {/* Transición */}
+                <Space size={6} style={{ marginBottom: 6 }}>
+                  <Tag color={ESTADO_COLOR[h.estatus_anterior]} style={{ margin: 0 }}>
+                    {ESTADO_LABEL[h.estatus_anterior] ?? h.estatus_anterior}
+                  </Tag>
+                  <Text type="secondary">→</Text>
+                  <Tag color={ESTADO_COLOR[h.estatus_nuevo]} style={{ margin: 0 }}>
+                    {ESTADO_LABEL[h.estatus_nuevo] ?? h.estatus_nuevo}
+                  </Tag>
+                </Space>
+
+                {/* Ejecutor y fecha */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+                  <UserOutlined style={{ color: '#8c8c8c', fontSize: 11 }} />
+                  <Text style={{ fontSize: 12 }}>{h.ejecutado_por_nombre}</Text>
+                  <Text type="secondary" style={{ fontSize: 11 }}>·</Text>
+                  <Text type="secondary" style={{ fontSize: 11 }}>
+                    {dayjs(h.timestamp).format('DD/MM/YYYY HH:mm')}
+                  </Text>
                 </div>
-                <Text type="secondary" style={{ fontSize: 12 }}>
-                  {dayjs(h.timestamp).format('DD/MM/YYYY HH:mm')} · {h.ejecutado_por_nombre}
-                </Text>                <div>
-                  {h.notificacion_enviada
-                    ? <Text type="success" style={{ fontSize: 11 }}><CheckCircleOutlined /> Notificación enviada</Text>
-                    : <Text type="secondary" style={{ fontSize: 11 }}><CloseCircleOutlined /> Sin notificación</Text>}
-                </div>
+
+                {/* Notificación */}
+                {h.notificacion_enviada ? (
+                  <Text type="success" style={{ fontSize: 11 }}>
+                    <CheckCircleOutlined style={{ marginRight: 4 }} />Notificación enviada
+                  </Text>
+                ) : (
+                  <Text type="secondary" style={{ fontSize: 11 }}>
+                    <CloseCircleOutlined style={{ marginRight: 4 }} />Sin notificación
+                  </Text>
+                )}
               </div>
             ),
           }))}

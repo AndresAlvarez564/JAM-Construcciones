@@ -15,6 +15,14 @@ def handler(event, context):
     proyecto_id = path_params.get('proyecto_id')
     is_admin = '/admin/' in path or path.startswith('/admin/')
 
+    # ===== PÚBLICO (sin auth) =====
+
+    if method == 'POST' and path == '/publico/clientes':
+        return clientes.registrar_publico(event)
+
+    if method == 'GET' and path == '/publico/proyectos':
+        return clientes.listar_proyectos_publico(event)
+
     # ===== INMOBILIARIA =====
 
     if method == 'POST' and path == '/clientes':

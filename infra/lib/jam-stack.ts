@@ -703,6 +703,15 @@ export class JamStack extends cdk.Stack {
       authorizationType: apigateway.AuthorizationType.COGNITO,
     });
 
+    // /publico — rutas sin auth para captura externa de clientes
+    const publicoResource = api.root.addResource('publico');
+
+    const publicoProyectosResource = publicoResource.addResource('proyectos');
+    publicoProyectosResource.addMethod('GET', captacionLambdaIntegration);
+
+    const publicoClientesResource = publicoResource.addResource('clientes');
+    publicoClientesResource.addMethod('POST', captacionLambdaIntegration);
+
     // CORS en respuestas de error del Gateway (401, 403, 5xx)
     api.addGatewayResponse('GatewayResponseDefault4XX', {
       type: apigateway.ResponseType.DEFAULT_4XX,

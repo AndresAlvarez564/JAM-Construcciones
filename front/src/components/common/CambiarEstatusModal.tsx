@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { Modal, Select, Switch, Space, Typography, Alert, Tag } from 'antd';
+import { Modal, Select, Switch, Space, Typography, Alert, Tag, Divider } from 'antd';
+import { ArrowRightOutlined } from '@ant-design/icons';
 import type { Proceso } from '../../types';
 
 const { Text } = Typography;
@@ -68,31 +69,54 @@ const CambiarEstatusModal = ({ open, proceso, tieneContacto, onCancel, onConfirm
     >
       <Space direction="vertical" style={{ width: '100%' }} size="middle">
 
-        <div>
-          <Text type="secondary">Unidad</Text>
-          <div style={{ marginTop: 4 }}>
-            <Tag color="geekblue">{proceso.unidad_nombre || proceso.unidad_id}</Tag>
+        {/* Unidad */}
+        <div style={{
+          background: '#f5f5f5', borderRadius: 8, padding: '10px 14px',
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        }}>
+          <Text type="secondary" style={{ fontSize: 12 }}>Unidad</Text>
+          <Tag color="geekblue" style={{ margin: 0, fontSize: 13 }}>
+            {proceso.unidad_nombre || proceso.unidad_id}
+          </Tag>
+        </div>
+
+        {/* Transición visual */}
+        <div style={{
+          background: '#fafafa', border: '1px solid #f0f0f0', borderRadius: 8,
+          padding: '12px 16px',
+        }}>
+          <Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 10 }}>
+            Transición de estatus
+          </Text>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <Tag color={ESTADO_COLOR[proceso.estado]} style={{ margin: 0, fontSize: 13, padding: '2px 10px' }}>
+              {ESTADO_LABEL[proceso.estado] ?? proceso.estado}
+            </Tag>
+            <ArrowRightOutlined style={{ color: '#bfbfbf' }} />
+            {nuevoEstatus ? (
+              <Tag color={ESTADO_COLOR[nuevoEstatus]} style={{ margin: 0, fontSize: 13, padding: '2px 10px' }}>
+                {ESTADO_LABEL[nuevoEstatus] ?? nuevoEstatus}
+              </Tag>
+            ) : (
+              <Tag style={{ margin: 0, fontSize: 13, padding: '2px 10px', color: '#bfbfbf', borderStyle: 'dashed' }}>
+                Selecciona
+              </Tag>
+            )}
           </div>
         </div>
 
+        {/* Selector */}
         <div>
-          <Text type="secondary">Estatus actual</Text>
-          <div style={{ marginTop: 4 }}>
-            <Tag color={ESTADO_COLOR[proceso.estado]}>{ESTADO_LABEL[proceso.estado] ?? proceso.estado}</Tag>
-          </div>
-        </div>
-
-        <div>
-          <Text type="secondary">Nuevo estatus</Text>
+          <Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 6 }}>Nuevo estatus</Text>
           <Select
-            style={{ width: '100%', marginTop: 4 }}
+            style={{ width: '100%' }}
             placeholder="Selecciona el nuevo estatus"
             value={nuevoEstatus}
             onChange={setNuevoEstatus}
           >
             {opciones.map(op => (
               <Option key={op} value={op}>
-                <Tag color={ESTADO_COLOR[op]}>{ESTADO_LABEL[op] ?? op}</Tag>
+                <Tag color={ESTADO_COLOR[op]} style={{ margin: 0 }}>{ESTADO_LABEL[op] ?? op}</Tag>
               </Option>
             ))}
           </Select>
@@ -102,15 +126,23 @@ const CambiarEstatusModal = ({ open, proceso, tieneContacto, onCancel, onConfirm
           )}
         </div>
 
+        {/* Notificación */}
         {tieneContacto && nuevoEstatus && (
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <Text>¿Enviar notificación al cliente?</Text>
-            <Switch checked={notificar} onChange={setNotificar} />
-          </div>
+          <>
+            <Divider style={{ margin: '0' }} />
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div>
+                <Text>Notificar al cliente</Text>
+                <br />
+                <Text type="secondary" style={{ fontSize: 12 }}>Se enviará un correo/mensaje al cliente</Text>
+              </div>
+              <Switch checked={notificar} onChange={setNotificar} />
+            </div>
+          </>
         )}
 
         {nuevoEstatus === 'reserva' && (
-          <Alert type="info" showIcon message="La unidad pasará a no_disponible." />
+          <Alert type="info" showIcon message="La unidad pasará a no disponible." />
         )}
         {nuevoEstatus === 'desvinculado' && (
           <Alert type="warning" showIcon message="La unidad volverá a estar disponible." />
