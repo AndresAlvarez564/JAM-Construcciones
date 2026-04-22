@@ -77,11 +77,12 @@ Excepción: operaciones con lógica de negocio compleja e independiente pueden m
 ├── front/              # React + Vite
 │   └── src/
 │       ├── config/     # Amplify + variables de entorno
+│       ├── constants/  # constantes compartidas (estados, colores, labels)
 │       ├── context/    # AuthContext global
-│       ├── hooks/      # useAuth
-│       ├── services/   # api.ts (Amplify REST), auth.service.ts
-│       ├── components/ # layout y common
-│       ├── pages/      # una carpeta por módulo
+│       ├── hooks/      # useAuth + hooks de dominio
+│       ├── services/   # api.ts (Amplify REST), servicios por dominio
+│       ├── components/ # layout/, common/, inventario/, clientes/, bloqueos/
+│       ├── pages/      # una carpeta por módulo — solo JSX de alto nivel
 │       └── types/      # interfaces TypeScript
 ├── infra/              # CDK TypeScript
 │   └── lib/
@@ -89,6 +90,70 @@ Excepción: operaciones con lógica de negocio compleja e independiente pueden m
 ├── lambdas/            # Lambdas Python por dominio
 └── docs/               # Documentación del proyecto
 ```
+
+---
+
+## Arquitectura de componentes React
+
+### Regla principal: separación de responsabilidades
+
+Cada página (`pages/`) debe tener máximo ~100 líneas. Si supera eso, hay que extraer.
+
+### Tres capas
+
+**1. Custom hooks (`hooks/`)**
+Contienen todo el estado y la lógica. La página solo los llama.
+
+```
+hooks/useInventario.ts   → estado y handlers de InventarioPage
+hooks/useClientes.ts     → estado y handlers de ClientesPage
+hooks/useBloqueos.ts     → estado y handlers de BloqueosPage
+```
+
+**2. Componentes (`components/<dominio>/`)**
+Cada modal, drawer o sección compleja es su propio archivo.
+
+```
+components/inventario/
+  ModalUnidad.tsx
+  ModalBloqueo.tsx
+  DrawerEtapas.tsx
+  TablaUnidades.tsx
+
+components/clientes/
+  DrawerDetalleCedula.tsx
+  ModalEditarCliente.tsx
+  ModalAsignarUnidad.tsx
+
+components/bloqueos/
+  ModalAsignarCliente.tsx
+```
+
+**3. Constantes compartidas (`constants/`)**
+
+```
+constants/estados.ts     → ESTADO_COLOR, ESTADO_LABEL, ESTADO_CONFIG
+```
+
+### Criterio de extracción
+
+Extraer a componente cuando:
+- El bloque JSX supera ~40 líneas
+- El mismo bloque aparece en más de un lugar
+- Tiene su propio estado interno
+
+Extraer a hook cuando:
+- Hay más de 5 `useState` en un componente
+- Las funciones de manejo superan ~30 líneas en total
+
+### Límite de tamaño
+
+| Archivo | Límite sugerido |
+|---------|----------------|
+| `pages/*.tsx` | ~100 líneas |
+| `components/**/*.tsx` | ~150 líneas |
+| `hooks/*.ts` | ~200 líneas |
+| `services/*.ts` | ~80 líneas |
 
 ---
 
