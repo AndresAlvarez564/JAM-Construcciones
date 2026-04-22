@@ -3,7 +3,7 @@ import {
   Table, Button, Modal, Form, Input, Tag, Space,
   Popconfirm, Typography, Select, Tooltip, message,
 } from 'antd';
-import { PlusOutlined, EditOutlined, StopOutlined, CheckOutlined, DeleteOutlined } from '@ant-design/icons';
+import { PlusOutlined, EditOutlined, StopOutlined, CheckOutlined, DeleteOutlined, ReloadOutlined } from '@ant-design/icons';
 import {
   getUsuariosSistema, crearUsuarioSistema, actualizarUsuarioSistema,
   deshabilitarUsuarioSistema, habilitarUsuarioSistema, eliminarUsuarioSistema,
@@ -150,7 +150,12 @@ const UsuariosSistemaPage = () => {
     <div style={{ padding: 24 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
         <Title level={2} style={{ margin: 0 }}>Usuarios del sistema</Title>
-        <Button type="primary" icon={<PlusOutlined />} onClick={abrirCrear}>Nuevo usuario</Button>
+        <Space>
+          <Tooltip title="Actualizar">
+            <Button icon={<ReloadOutlined />} onClick={cargar} loading={loading} />
+          </Tooltip>
+          <Button type="primary" icon={<PlusOutlined />} onClick={abrirCrear}>Nuevo usuario</Button>
+        </Space>
       </div>
 
       <Table

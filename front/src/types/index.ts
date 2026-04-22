@@ -43,28 +43,20 @@ export interface Etapa {
   creado_en: string;
 }
 
-export interface Torre {
-  pk: string;
-  sk: string;
-  torre_id: string;
-  nombre: string;
-  etapa_id: string;
-  orden: number;
-  activo: boolean;
-  creado_en: string;
-}
-
 export interface Unidad {
   pk: string;
   sk: string;
   unidad_id: string;
   id_unidad: string;
   etapa_id: string;
-  torre_id: string;
   metraje: number;
   precio: number;
+  tipo?: string;
+  manzana?: string;
+  piso?: string;
   estado: string;
   bloqueado_por?: string;
+  cliente_cedula?: string;
   fecha_bloqueo?: string;
   fecha_liberacion?: string;
   tiempo_restante?: number;

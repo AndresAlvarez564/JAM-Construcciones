@@ -5,7 +5,7 @@ import {
 } from 'antd';
 import {
   PlusOutlined, EditOutlined, StopOutlined, CheckOutlined,
-  DeleteOutlined, UserOutlined, TeamOutlined, MailOutlined,
+  DeleteOutlined, UserOutlined, TeamOutlined, MailOutlined, ReloadOutlined,
 } from '@ant-design/icons';
 import {
   getInmobiliarias, crearInmobiliaria, actualizarInmobiliaria,
@@ -144,9 +144,14 @@ const InmobiliariasPage = () => {
       {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
         <Title level={4} style={{ margin: 0 }}>Inmobiliarias</Title>
-        <Button type="primary" icon={<PlusOutlined />} onClick={abrirCrear}>
-          Nueva inmobiliaria
-        </Button>
+        <Space>
+          <Tooltip title="Actualizar">
+            <Button icon={<ReloadOutlined />} onClick={cargar} loading={loading} />
+          </Tooltip>
+          <Button type="primary" icon={<PlusOutlined />} onClick={abrirCrear}>
+            Nueva inmobiliaria
+          </Button>
+        </Space>
       </div>
 
       {/* Cards */}

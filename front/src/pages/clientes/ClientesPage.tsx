@@ -1,15 +1,17 @@
-import { useEffect, useState, useCallback, useRef } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import {
   Typography, Table, Tag, Button, Modal, Form, Input, Select,
   DatePicker, message, Space, Tooltip, Drawer, Descriptions, Spin,
-  Tabs, Divider,
 } from 'antd';
 import {
   PlusOutlined, ReloadOutlined, UserOutlined, HistoryOutlined,
-  SwapOutlined, SearchOutlined, EditOutlined,
+  SwapOutlined, SearchOutlined, EditOutlined, EyeOutlined,
 } from '@ant-design/icons';
 import dayjs from 'dayjs';
-import { getClientes, getClientesAdmin, buscarClienteAdmin, registrarCliente, actualizarClienteAdmin } from '../../services/clientes.service';
+import {
+  getClientes, getClientesAdmin, buscarClienteAdmin,
+  registrarCliente, actualizarClienteAdmin,
+} from '../../services/clientes.service';
 import { getProcesosCliente, getMisProcesos, crearProceso, cambiarEstatus } from '../../services/crm.service';
 import { getProyectos, getUnidades } from '../../services/proyectos.service';
 import { getInmobiliarias } from '../../services/inmobiliarias.service';
@@ -31,44 +33,69 @@ const ESTADO_LABEL: Record<string, string> = {
   separacion: 'Separación', inicial: 'Inicial', desvinculado: 'Desvinculado',
 };
 
+// Agrupa lista de clientes por cédula
+interface ClienteAgrupado {
+  cedula: string;
+  nombres: string;
+  apellidos: string;
+  registros: Cliente[];  // uno por proyecto/inmobiliaria
+}
+
+function agruparPorCedula(lista: Cliente[]): ClienteAgrupado[] {
+  const map = new Map<string, ClienteAgrupado>();
+  for (const c of lista) {
+    if (!map.has(c.cedula)) {
+      map.set(c.cedula, { cedula: c.cedula, nombres: c.nombres, apellidos: c.apellidos, registros: [] });
+    }
+    map.get(c.cedula)!.registros.push(c);
+  }
+  return Array.from(map.values());
+}
+
 const ClientesPage = () => {
   const { usuario } = useAuthContext();
   const isAdmin = usuario?.rol !== 'inmobiliaria';
 
+  // Lista plana de clientes (para inmobiliaria) o agrupada (para admin)
   const [clientes, setClientes] = useState<Cliente[]>([]);
   const [nextToken, setNextToken] = useState<string | undefined>();
   const [proyectos, setProyectos] = useState<Proyecto[]>([]);
   const [inmobiliarias, setInmobiliarias] = useState<Inmobiliaria[]>([]);
   const [loading, setLoading] = useState(false);
-  const [modalOpen, setModalOpen] = useState(false);
-  const [drawerCliente, setDrawerCliente] = useState<Cliente | null>(null);
-  const [drawerProcesos, setDrawerProcesos] = useState<Proceso[]>([]);
-  const [loadingProcesos, setLoadingProcesos] = useState(false);
+  const [busqueda, setBusqueda] = useState('');
   const [proyectoFiltro, setProyectoFiltro] = useState<string | undefined>();
   const [inmoFiltro, setInmoFiltro] = useState<string | undefined>();
-  const [busqueda, setBusqueda] = useState('');
+
+  // Drawer de detalle por cédula (admin)
+  const [drawerCedula, setDrawerCedula] = useState<string | null>(null);
+  const [drawerRegistros, setDrawerRegistros] = useState<(Cliente & { procesos: Proceso[] })[]>([]);
+  const [loadingDrawer, setLoadingDrawer] = useState(false);
+
+  // Drawer de detalle simple (inmobiliaria)
+  const [drawerCliente, setDrawerCliente] = useState<Cliente | null>(null);
+  const [drawerProcesos, setDrawerProcesos] = useState<Proceso[]>([]);
+
+  // Modales
+  const [modalOpen, setModalOpen] = useState(false);
   const [form] = Form.useForm();
   const [formEditar] = Form.useForm();
   const [editarModal, setEditarModal] = useState(false);
-  const [estatusModal, setEstatusModal] = useState<Proceso | null>(null);
-  const [estatusCliente, setEstatusCliente] = useState<Cliente | null>(null);
-  const [historialProceso, setHistorialProceso] = useState<Proceso | null>(null);
-  const [historialClienteNombre, setHistorialClienteNombre] = useState('');
+  const [editarRegistro, setEditarRegistro] = useState<Cliente | null>(null);
   const [crearProcesoModal, setCrearProcesoModal] = useState<Cliente | null>(null);
   const [unidadesProyecto, setUnidadesProyecto] = useState<Unidad[]>([]);
   const [formProceso] = Form.useForm();
-  // Vista por cédula (admin)
-  const [cedulaBuscar, setCedulaBuscar] = useState('');
-  const [resultadoCedula, setResultadoCedula] = useState<(Cliente & { procesos: any[] })[] | null>(null);
-  const [buscandoCedula, setBuscandoCedula] = useState(false);
-  const busquedaTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [estatusModal, setEstatusModal] = useState<Proceso | null>(null);
+  const [estatusCliente, setEstatusCliente] = useState<Cliente | null>(null);
+  const [historialProceso, setHistorialProceso] = useState<Proceso | null>(null);
+  const [historialNombre, setHistorialNombre] = useState('');
 
   const cargar = useCallback(async (proyId?: string, inmoId?: string, token?: string) => {
     setLoading(true);
     try {
       if (isAdmin) {
         const data = await getClientesAdmin(
-          proyId || inmoId ? { proyecto_id: proyId, inmobiliaria_id: inmoId, next_token: token } : { next_token: token }
+          proyId || inmoId ? { proyecto_id: proyId, inmobiliaria_id: inmoId, next_token: token }
+            : { next_token: token }
         );
         setClientes(prev => token ? [...prev, ...data.items] : data.items);
         setNextToken(data.next_token);
@@ -89,7 +116,7 @@ const ClientesPage = () => {
   const proyectoNombre = (id: string) => proyectos.find(p => p.proyecto_id === id)?.nombre ?? id;
   const inmoNombre = (id: string) => inmobiliarias.find(i => i.pk === id)?.nombre ?? id;
 
-  // Búsqueda local por nombre o cédula
+  // Filtro local por búsqueda
   const clientesFiltrados = busqueda.trim()
     ? clientes.filter(c =>
         c.cedula.toLowerCase().includes(busqueda.toLowerCase()) ||
@@ -97,58 +124,71 @@ const ClientesPage = () => {
       )
     : clientes;
 
-  const abrirDrawerCliente = async (cliente: Cliente) => {
-    setDrawerCliente(cliente);
-    setDrawerProcesos([]);
-    setLoadingProcesos(true);
+  // Agrupados por cédula para admin
+  const agrupados = isAdmin ? agruparPorCedula(clientesFiltrados) : [];
+
+  // Abrir drawer de detalle por cédula (admin)
+  const abrirDetalleCedula = async (cedula: string) => {
+    setDrawerCedula(cedula);
+    setDrawerRegistros([]);
+    setLoadingDrawer(true);
     try {
-      if (isAdmin) {
-        const p = await getProcesosCliente(cliente.cedula, cliente.inmobiliaria_id);
-        setDrawerProcesos(p);
-      } else {
-        const p = await getMisProcesos(cliente.proyecto_id);
-        setDrawerProcesos(p.filter(x => x.cedula === cliente.cedula));
-      }
-    } catch { setDrawerProcesos([]); }
-    finally { setLoadingProcesos(false); }
+      const data = await buscarClienteAdmin(cedula);
+      // Enriquecer con procesos
+      const enriquecidos = await Promise.all(
+        data.map(async (c) => {
+          try {
+            const procs = await getProcesosCliente(c.cedula, c.inmobiliaria_id);
+            return { ...c, procesos: procs };
+          } catch { return { ...c, procesos: [] }; }
+        })
+      );
+      setDrawerRegistros(enriquecidos);
+    } catch { setDrawerRegistros([]); }
+    finally { setLoadingDrawer(false); }
   };
 
-  const abrirEditar = (cliente: Cliente) => {
+  // Abrir drawer simple (inmobiliaria)
+  const abrirDrawerInmo = async (cliente: Cliente) => {
+    setDrawerCliente(cliente);
+    setDrawerProcesos([]);
+    try {
+      const p = await getMisProcesos(cliente.proyecto_id);
+      setDrawerProcesos(p.filter(x => x.cedula === cliente.cedula));
+    } catch { setDrawerProcesos([]); }
+  };
+
+  const abrirEditar = (registro: Cliente) => {
+    setEditarRegistro(registro);
     formEditar.setFieldsValue({
-      nombres: cliente.nombres,
-      apellidos: cliente.apellidos,
-      correo: cliente.correo,
-      telefono: cliente.telefono,
-      estado_civil: cliente.estado_civil,
-      nacionalidad: cliente.nacionalidad,
-      pais_residencia: cliente.pais_residencia,
-      fecha_nacimiento: cliente.fecha_nacimiento ? dayjs(cliente.fecha_nacimiento) : undefined,
+      nombres: registro.nombres, apellidos: registro.apellidos,
+      correo: registro.correo, telefono: registro.telefono,
+      estado_civil: registro.estado_civil, nacionalidad: registro.nacionalidad,
+      pais_residencia: registro.pais_residencia,
+      fecha_nacimiento: registro.fecha_nacimiento ? dayjs(registro.fecha_nacimiento) : undefined,
     });
     setEditarModal(true);
   };
 
   const handleEditar = async (values: any) => {
-    if (!drawerCliente) return;
+    if (!editarRegistro) return;
     try {
-      await actualizarClienteAdmin(drawerCliente.cedula, drawerCliente.proyecto_id, drawerCliente.inmobiliaria_id, {
+      await actualizarClienteAdmin(editarRegistro.cedula, editarRegistro.proyecto_id, editarRegistro.inmobiliaria_id, {
         ...values,
         fecha_nacimiento: values.fecha_nacimiento ? dayjs(values.fecha_nacimiento).format('YYYY-MM-DD') : undefined,
       });
       message.success('Cliente actualizado');
       setEditarModal(false);
-      // Refrescar drawer
-      const updated = await getClientesAdmin({ proyecto_id: drawerCliente.proyecto_id, inmobiliaria_id: drawerCliente.inmobiliaria_id });
-      const c = updated.items.find(x => x.cedula === drawerCliente.cedula);
-      if (c) setDrawerCliente(c);
-    } catch { message.error('Error al actualizar cliente'); }
+      if (drawerCedula) abrirDetalleCedula(drawerCedula);
+    } catch { message.error('Error al actualizar'); }
   };
 
-  const abrirCrearProceso = async (cliente: Cliente) => {
-    setCrearProcesoModal(cliente);
+  const abrirCrearProceso = async (registro: Cliente) => {
+    setCrearProcesoModal(registro);
     formProceso.resetFields();
     const [disponibles, bloqueadas] = await Promise.all([
-      getUnidades(cliente.proyecto_id, { estado: 'disponible' }).catch(() => []),
-      getUnidades(cliente.proyecto_id, { estado: 'bloqueada' }).catch(() => []),
+      getUnidades(registro.proyecto_id, { estado: 'disponible' }).catch(() => []),
+      getUnidades(registro.proyecto_id, { estado: 'bloqueada' }).catch(() => []),
     ]);
     setUnidadesProyecto([...disponibles, ...bloqueadas]);
   };
@@ -163,14 +203,8 @@ const ClientesPage = () => {
       });
       message.success('Proceso creado');
       setCrearProcesoModal(null);
-      formProceso.resetFields();
-      if (drawerCliente) {
-        const p = await getProcesosCliente(drawerCliente.cedula, drawerCliente.inmobiliaria_id);
-        setDrawerProcesos(p);
-      }
-    } catch (err: any) {
-      message.error(err?.response?.data?.message || 'Error al crear proceso');
-    }
+      if (drawerCedula) abrirDetalleCedula(drawerCedula);
+    } catch (err: any) { message.error(err?.response?.data?.message || 'Error al crear proceso'); }
   };
 
   const handleCambiarEstatus = async (estatus: string, notificar: boolean) => {
@@ -180,10 +214,7 @@ const ClientesPage = () => {
         { estatus, inmobiliaria_id: estatusModal.inmobiliaria_id, notificar });
       message.success(`Estatus actualizado a ${ESTADO_LABEL[estatus] ?? estatus}`);
       setEstatusModal(null); setEstatusCliente(null);
-      if (drawerCliente) {
-        const p = await getProcesosCliente(drawerCliente.cedula, drawerCliente.inmobiliaria_id);
-        setDrawerProcesos(p);
-      }
+      if (drawerCedula) abrirDetalleCedula(drawerCedula);
       cargar(proyectoFiltro, inmoFiltro);
     } catch (err: any) {
       message.error(err?.response?.data?.message || 'Error al cambiar estatus');
@@ -203,17 +234,48 @@ const ClientesPage = () => {
     }
   };
 
-  const buscarPorCedula = async (cedula: string) => {
-    if (!cedula.trim()) { setResultadoCedula(null); return; }
-    setBuscandoCedula(true);
-    try {
-      const data = await buscarClienteAdmin(cedula.trim());
-      setResultadoCedula(data);
-    } catch { setResultadoCedula([]); }
-    finally { setBuscandoCedula(false); }
-  };
+  // ── Columnas tabla admin (agrupada por cédula) ──
+  const columnasAdmin = [
+    {
+      title: 'Cliente', key: 'cliente',
+      render: (_: unknown, r: ClienteAgrupado) => (
+        <div>
+          <Text strong>{r.nombres} {r.apellidos}</Text>
+          <br /><Text type="secondary" style={{ fontSize: 12 }}>{r.cedula}</Text>
+        </div>
+      ),
+    },
+    {
+      title: 'Proyectos', key: 'proyectos',
+      render: (_: unknown, r: ClienteAgrupado) => (
+        <Space wrap>
+          {r.registros.map(reg => (
+            <Tag key={`${reg.pk}#${reg.sk}`} color={reg.exclusividad_activa ? 'blue' : 'default'}>
+              {proyectoNombre(reg.proyecto_id)}
+            </Tag>
+          ))}
+        </Space>
+      ),
+    },
+    {
+      title: 'Inmobiliarias', key: 'inmos',
+      render: (_: unknown, r: ClienteAgrupado) => {
+        const unicas = [...new Set(r.registros.map(reg => reg.inmobiliaria_id))];
+        return <Space wrap>{unicas.map(id => <Tag key={id}>{inmoNombre(id)}</Tag>)}</Space>;
+      },
+    },
+    {
+      title: '', key: 'acciones', width: 100,
+      render: (_: unknown, r: ClienteAgrupado) => (
+        <Button size="small" icon={<EyeOutlined />} onClick={() => abrirDetalleCedula(r.cedula)}>
+          Ver más
+        </Button>
+      ),
+    },
+  ];
 
-  const columnas = [
+  // ── Columnas tabla inmobiliaria ──
+  const columnasInmo = [
     {
       title: 'Cliente', key: 'cliente',
       render: (_: unknown, r: Cliente) => (
@@ -224,33 +286,15 @@ const ClientesPage = () => {
       ),
     },
     { title: 'Proyecto', key: 'proyecto', render: (_: unknown, r: Cliente) => proyectoNombre(r.proyecto_id) },
-    ...(isAdmin ? [{ title: 'Inmobiliaria', key: 'inmo', render: (_: unknown, r: Cliente) => <Tag>{inmoNombre(r.inmobiliaria_id)}</Tag> }] : []),
     {
-      title: 'Exclusividad', key: 'exclusividad',
+      title: 'Exclusividad', key: 'excl',
       render: (_: unknown, r: Cliente) => r.exclusividad_activa
         ? <Tag color="green">Activa hasta {dayjs(r.fecha_vencimiento).format('DD/MM/YYYY')}</Tag>
         : <Tag>Vencida</Tag>,
     },
-    { title: 'Captado', dataIndex: 'fecha_captacion', key: 'fecha_captacion', render: (v: string) => dayjs(v).format('DD/MM/YYYY') },
-    { title: '', key: 'acciones', render: (_: unknown, r: Cliente) => <Button size="small" type="link" onClick={() => abrirDrawerCliente(r)}>Ver detalle</Button> },
+    { title: 'Captado', dataIndex: 'fecha_captacion', key: 'fc', render: (v: string) => dayjs(v).format('DD/MM/YYYY') },
+    { title: '', key: 'acc', render: (_: unknown, r: Cliente) => <Button size="small" type="link" onClick={() => abrirDrawerInmo(r)}>Ver detalle</Button> },
   ];
-
-  const tablaClientes = (data: Cliente[]) => (
-    <Table dataSource={data} columns={columnas} rowKey={r => `${r.pk}#${r.sk}`} loading={loading}
-      pagination={false} locale={{ emptyText: 'Sin clientes' }}
-      onRow={r => ({ onClick: () => abrirDrawerCliente(r), style: { cursor: 'pointer' } })}
-    />
-  );
-
-  const tabItems = isAdmin ? [
-    { key: 'todos', label: `Todos (${clientesFiltrados.length})`, children: tablaClientes(clientesFiltrados) },
-    { key: 'activos', label: 'Exclusividad activa', children: tablaClientes(clientesFiltrados.filter(c => c.exclusividad_activa)) },
-    { key: 'vencidos', label: 'Exclusividad vencida', children: tablaClientes(clientesFiltrados.filter(c => !c.exclusividad_activa)) },
-  ] : [
-    { key: 'activos', label: `Activos (${clientesFiltrados.filter(c => c.exclusividad_activa).length})`, children: tablaClientes(clientesFiltrados.filter(c => c.exclusividad_activa)) },
-    { key: 'vencidos', label: `Vencidos (${clientesFiltrados.filter(c => !c.exclusividad_activa).length})`, children: tablaClientes(clientesFiltrados.filter(c => !c.exclusividad_activa)) },
-  ];
-
 
   return (
     <div>
@@ -258,22 +302,17 @@ const ClientesPage = () => {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
         <Title level={4} style={{ margin: 0 }}>Clientes</Title>
         <Space>
-          {/* Búsqueda por nombre/cédula */}
-          <Input
-            prefix={<SearchOutlined />}
-            placeholder="Buscar por nombre o cédula..."
-            style={{ width: 240 }}
-            value={busqueda}
-            onChange={e => setBusqueda(e.target.value)}
-            allowClear
-          />
-          <Select allowClear placeholder="Filtrar por proyecto" style={{ width: 180 }}
-            onChange={(v) => { setProyectoFiltro(v); setNextToken(undefined); cargar(v, inmoFiltro); }} value={proyectoFiltro}>
+          <Input prefix={<SearchOutlined />} placeholder="Buscar por nombre o cédula..."
+            style={{ width: 240 }} value={busqueda} onChange={e => setBusqueda(e.target.value)} allowClear />
+          <Select allowClear placeholder="Proyecto" style={{ width: 180 }}
+            value={proyectoFiltro}
+            onChange={(v) => { setProyectoFiltro(v); setNextToken(undefined); cargar(v, inmoFiltro); }}>
             {proyectos.map(p => <Option key={p.proyecto_id} value={p.proyecto_id}>{p.nombre}</Option>)}
           </Select>
           {isAdmin && (
-            <Select allowClear placeholder="Filtrar por inmobiliaria" style={{ width: 180 }}
-              onChange={(v) => { setInmoFiltro(v); setNextToken(undefined); cargar(proyectoFiltro, v); }} value={inmoFiltro}>
+            <Select allowClear placeholder="Inmobiliaria" style={{ width: 180 }}
+              value={inmoFiltro}
+              onChange={(v) => { setInmoFiltro(v); setNextToken(undefined); cargar(proyectoFiltro, v); }}>
               {inmobiliarias.map(i => <Option key={i.pk} value={i.pk}>{i.nombre}</Option>)}
             </Select>
           )}
@@ -286,148 +325,134 @@ const ClientesPage = () => {
         </Space>
       </div>
 
-      {/* Búsqueda por cédula — solo admin */}
+      {/* Tabla admin — agrupada por cédula */}
       {isAdmin && (
-        <div style={{ marginBottom: 16, padding: '12px 16px', background: '#fafafa', borderRadius: 8, border: '1px solid #f0f0f0' }}>
-          <Space>
-            <Text type="secondary" style={{ fontSize: 13 }}>Buscar cliente por cédula exacta:</Text>
-            <Input.Search
-              placeholder="V-12345678"
-              style={{ width: 220 }}
-              loading={buscandoCedula}
-              onSearch={buscarPorCedula}
-              onChange={e => { if (!e.target.value) setResultadoCedula(null); }}
-              allowClear
-            />
-          </Space>
-          {resultadoCedula !== null && (
-            <div style={{ marginTop: 12 }}>
-              {resultadoCedula.length === 0 ? (
-                <Text type="secondary">No se encontró ningún cliente con esa cédula.</Text>
+        <>
+          <Table
+            dataSource={agrupados} columns={columnasAdmin}
+            rowKey="cedula" loading={loading}
+            pagination={false} locale={{ emptyText: 'Sin clientes' }}
+          />
+          {nextToken && (
+            <div style={{ textAlign: 'center', marginTop: 16 }}>
+              <Button onClick={() => cargar(proyectoFiltro, inmoFiltro, nextToken)} loading={loading}>Cargar más</Button>
+            </div>
+          )}
+        </>
+      )}
+
+      {/* Tabla inmobiliaria */}
+      {!isAdmin && (
+        <Table
+          dataSource={clientesFiltrados} columns={columnasInmo}
+          rowKey={r => `${r.pk}#${r.sk}`} loading={loading}
+          pagination={{ pageSize: 20 }} locale={{ emptyText: 'Sin clientes' }}
+          onRow={r => ({ onClick: () => abrirDrawerInmo(r), style: { cursor: 'pointer' } })}
+        />
+      )}
+
+      {/* Drawer detalle por cédula — admin */}
+      <Drawer
+        title={drawerCedula ? `Cliente — ${drawerRegistros[0]?.nombres ?? ''} ${drawerRegistros[0]?.apellidos ?? ''}` : ''}
+        open={!!drawerCedula}
+        onClose={() => { setDrawerCedula(null); setDrawerRegistros([]); }}
+        width={520}
+      >
+        {loadingDrawer ? (
+          <div style={{ textAlign: 'center', paddingTop: 40 }}><Spin /></div>
+        ) : drawerRegistros.map((reg, idx) => (
+          <div key={`${reg.pk}#${reg.sk}`} style={{ marginBottom: 24 }}>
+            {idx === 0 && (
+              <>
+                {/* Datos personales — solo del primer registro */}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                  <Title level={5} style={{ margin: 0 }}>Datos personales</Title>
+                  <Button size="small" icon={<EditOutlined />} onClick={() => abrirEditar(reg)}>Editar</Button>
+                </div>
+                <Descriptions column={1} size="small" style={{ marginBottom: 20 }}>
+                  <Descriptions.Item label="Cédula">{reg.cedula}</Descriptions.Item>
+                  {reg.correo && <Descriptions.Item label="Correo">{reg.correo}</Descriptions.Item>}
+                  {reg.telefono && <Descriptions.Item label="Teléfono">{reg.telefono}</Descriptions.Item>}
+                  {reg.edad && <Descriptions.Item label="Edad">{reg.edad} años</Descriptions.Item>}
+                  {reg.estado_civil && <Descriptions.Item label="Estado civil">{reg.estado_civil}</Descriptions.Item>}
+                  {reg.nacionalidad && <Descriptions.Item label="Nacionalidad">{reg.nacionalidad}</Descriptions.Item>}
+                  {reg.pais_residencia && <Descriptions.Item label="País residencia">{reg.pais_residencia}</Descriptions.Item>}
+                </Descriptions>
+                <Title level={5} style={{ marginBottom: 12 }}>Registros por proyecto</Title>
+              </>
+            )}
+
+            {/* Card por registro (proyecto + inmobiliaria) */}
+            <div style={{ padding: '12px 14px', background: '#fafafa', border: '1px solid #f0f0f0', borderRadius: 8, marginBottom: 8 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
+                <div>
+                  <Text strong>{proyectoNombre(reg.proyecto_id)}</Text>
+                  <br />
+                  <Text type="secondary" style={{ fontSize: 12 }}>{inmoNombre(reg.inmobiliaria_id)}</Text>
+                </div>
+                <Tag color={reg.exclusividad_activa ? 'green' : 'default'}>
+                  {reg.exclusividad_activa ? `Excl. hasta ${dayjs(reg.fecha_vencimiento).format('DD/MM/YYYY')}` : 'Vencida'}
+                </Tag>
+              </div>
+
+              {/* Procesos de este registro */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                <Text type="secondary" style={{ fontSize: 12 }}>Procesos de venta</Text>
+                <Button size="small" type="link" style={{ padding: 0, fontSize: 12 }} icon={<PlusOutlined />}
+                  onClick={() => abrirCrearProceso(reg)}>Asignar unidad</Button>
+              </div>
+              {reg.procesos?.length === 0 ? (
+                <Text type="secondary" style={{ fontSize: 12 }}>Sin procesos</Text>
               ) : (
-                resultadoCedula.map(c => (
-                  <div key={`${c.pk}#${c.sk}`} style={{ padding: '10px 14px', background: '#fff', border: '1px solid #e8e8e8', borderRadius: 8, marginBottom: 8 }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                      <div>
-                        <Text strong>{c.nombres} {c.apellidos}</Text>
-                        <Text type="secondary" style={{ marginLeft: 8, fontSize: 12 }}>{c.cedula}</Text>
-                        <br />
-                        <Space size={4} style={{ marginTop: 4 }}>
-                          <Tag>{proyectoNombre(c.proyecto_id)}</Tag>
-                          <Tag>{inmoNombre(c.inmobiliaria_id)}</Tag>
-                          {c.exclusividad_activa ? <Tag color="green">Exclusividad activa</Tag> : <Tag>Vencida</Tag>}
-                        </Space>
-                      </div>
-                      <Button size="small" type="link" onClick={() => abrirDrawerCliente(c)}>Ver detalle</Button>
-                    </div>
-                    {c.procesos?.length > 0 && (
-                      <div style={{ marginTop: 8 }}>
-                        <Text type="secondary" style={{ fontSize: 12 }}>Procesos: </Text>
-                        <Space wrap>
-                          {c.procesos.map((p: any) => (
-                            <Tag key={p.sk} color={ESTADO_COLOR[p.estado]}>{p.unidad_nombre || p.unidad_id} — {ESTADO_LABEL[p.estado] ?? p.estado}</Tag>
-                          ))}
-                        </Space>
-                      </div>
-                    )}
+                reg.procesos?.map(p => (
+                  <div key={p.sk} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                    <Space size={4}>
+                      <Tag color="geekblue" style={{ margin: 0 }}>{p.unidad_nombre || p.unidad_id}</Tag>
+                      <Tag color={ESTADO_COLOR[p.estado]} style={{ margin: 0 }}>{ESTADO_LABEL[p.estado] ?? p.estado}</Tag>
+                    </Space>
+                    <Space size={0}>
+                      <Button size="small" type="link" icon={<SwapOutlined />}
+                        onClick={() => { setEstatusModal(p); setEstatusCliente(reg); }}>Estatus</Button>
+                      <Button size="small" type="link" icon={<HistoryOutlined />}
+                        onClick={() => { setHistorialProceso(p); setHistorialNombre(`${reg.nombres} ${reg.apellidos}`); }}>Historial</Button>
+                    </Space>
                   </div>
                 ))
               )}
             </div>
-          )}
-        </div>
-      )}
+          </div>
+        ))}
+      </Drawer>
 
-      <Tabs items={tabItems} />
-
-      {/* Cargar más */}
-      {isAdmin && nextToken && (
-        <div style={{ textAlign: 'center', marginTop: 16 }}>
-          <Button onClick={() => cargar(proyectoFiltro, inmoFiltro, nextToken)} loading={loading}>Cargar más</Button>
-        </div>
-      )}
-
-      {/* Drawer detalle cliente */}
+      {/* Drawer inmobiliaria */}
       <Drawer
         title={drawerCliente ? `${drawerCliente.nombres} ${drawerCliente.apellidos}` : ''}
-        open={!!drawerCliente}
-        onClose={() => { setDrawerCliente(null); setDrawerProcesos([]); }}
-        width={480}
-        extra={isAdmin && drawerCliente && (
-          <Button size="small" icon={<EditOutlined />} onClick={() => abrirEditar(drawerCliente)}>Editar</Button>
-        )}
+        open={!!drawerCliente} onClose={() => { setDrawerCliente(null); setDrawerProcesos([]); }} width={420}
       >
         {drawerCliente && (
           <div>
-            <Title level={5} style={{ marginBottom: 8 }}>Datos personales</Title>
-            <Descriptions column={1} size="small" style={{ marginBottom: 20 }}>
+            <Descriptions column={1} size="small" style={{ marginBottom: 16 }}>
               <Descriptions.Item label="Cédula">{drawerCliente.cedula}</Descriptions.Item>
               {drawerCliente.correo && <Descriptions.Item label="Correo">{drawerCliente.correo}</Descriptions.Item>}
               {drawerCliente.telefono && <Descriptions.Item label="Teléfono">{drawerCliente.telefono}</Descriptions.Item>}
-              {drawerCliente.edad && <Descriptions.Item label="Edad">{drawerCliente.edad} años</Descriptions.Item>}
-              {drawerCliente.estado_civil && <Descriptions.Item label="Estado civil">{drawerCliente.estado_civil}</Descriptions.Item>}
-              {drawerCliente.nacionalidad && <Descriptions.Item label="Nacionalidad">{drawerCliente.nacionalidad}</Descriptions.Item>}
-              {drawerCliente.pais_residencia && <Descriptions.Item label="País residencia">{drawerCliente.pais_residencia}</Descriptions.Item>}
               <Descriptions.Item label="Proyecto">{proyectoNombre(drawerCliente.proyecto_id)}</Descriptions.Item>
-              {isAdmin && <Descriptions.Item label="Inmobiliaria">{inmoNombre(drawerCliente.inmobiliaria_id)}</Descriptions.Item>}
               <Descriptions.Item label="Exclusividad">
                 {drawerCliente.exclusividad_activa
                   ? <Tag color="green">Activa hasta {dayjs(drawerCliente.fecha_vencimiento).format('DD/MM/YYYY')}</Tag>
                   : <Tag>Vencida</Tag>}
               </Descriptions.Item>
-              <Descriptions.Item label="Captado">{dayjs(drawerCliente.fecha_captacion).format('DD/MM/YYYY')}</Descriptions.Item>
             </Descriptions>
-
-            {/* Procesos — inmobiliaria solo lectura */}
-            {!isAdmin && drawerProcesos.length > 0 && (
+            {drawerProcesos.length > 0 && (
               <>
-                <Title level={5} style={{ marginBottom: 8, marginTop: 16 }}>Procesos de venta</Title>
+                <Title level={5} style={{ marginBottom: 8 }}>Procesos de venta</Title>
                 {drawerProcesos.map(p => (
                   <div key={p.sk} style={{ padding: '10px 14px', background: '#fafafa', border: '1px solid #f0f0f0', borderRadius: 8, marginBottom: 8 }}>
                     <Space>
                       <Tag color="geekblue">{p.unidad_nombre || p.unidad_id}</Tag>
                       <Tag color={ESTADO_COLOR[p.estado]}>{ESTADO_LABEL[p.estado] ?? p.estado}</Tag>
                     </Space>
-                    <Text type="secondary" style={{ fontSize: 11, display: 'block', marginTop: 4 }}>
-                      Desde {dayjs(p.fecha_inicio).format('DD/MM/YYYY')}
-                    </Text>
                   </div>
                 ))}
-              </>
-            )}
-
-            {/* Procesos — admin */}
-            {isAdmin && (
-              <>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                  <Title level={5} style={{ margin: 0 }}>Procesos de venta</Title>
-                  <Button size="small" icon={<PlusOutlined />} onClick={() => abrirCrearProceso(drawerCliente)}>Asignar unidad</Button>
-                </div>
-                {loadingProcesos ? (
-                  <div style={{ textAlign: 'center', padding: 20 }}><Spin /></div>
-                ) : drawerProcesos.length === 0 ? (
-                  <Text type="secondary">Sin procesos de venta registrados</Text>
-                ) : (
-                  drawerProcesos.map(p => (
-                    <div key={p.sk} style={{ padding: '12px 14px', background: '#fafafa', border: '1px solid #f0f0f0', borderRadius: 8, marginBottom: 8 }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <Space>
-                          <Tag color="geekblue">{p.unidad_nombre || p.unidad_id}</Tag>
-                          <Tag color={ESTADO_COLOR[p.estado]}>{ESTADO_LABEL[p.estado] ?? p.estado}</Tag>
-                        </Space>
-                        <Space>
-                          <Button size="small" type="link" icon={<SwapOutlined />}
-                            onClick={() => { setEstatusModal(p); setEstatusCliente(drawerCliente); }}>Estatus</Button>
-                          <Button size="small" type="link" icon={<HistoryOutlined />}
-                            onClick={() => { setHistorialProceso(p); setHistorialClienteNombre(`${drawerCliente.nombres} ${drawerCliente.apellidos}`); }}>Historial</Button>
-                        </Space>
-                      </div>
-                      <Text type="secondary" style={{ fontSize: 11, marginTop: 4, display: 'block' }}>
-                        Inicio: {dayjs(p.fecha_inicio).format('DD/MM/YYYY')}
-                      </Text>
-                    </div>
-                  ))
-                )}
               </>
             )}
           </div>
@@ -454,7 +479,7 @@ const ClientesPage = () => {
           <Form.Item name="telefono" label="Teléfono"><Input placeholder="+58 412 0000000" /></Form.Item>
           <Form.Item name="fecha_nacimiento" label="Fecha de nacimiento"><DatePicker style={{ width: '100%' }} format="DD/MM/YYYY" /></Form.Item>
           <Form.Item name="estado_civil" label="Estado civil">
-            <Select allowClear placeholder="Selecciona">
+            <Select allowClear>
               <Option value="soltero">Soltero/a</Option><Option value="casado">Casado/a</Option>
               <Option value="divorciado">Divorciado/a</Option><Option value="viudo">Viudo/a</Option>
               <Option value="union_libre">Unión libre</Option>
@@ -465,10 +490,10 @@ const ClientesPage = () => {
         </Form>
       </Modal>
 
-      {/* Modal editar cliente — admin */}
+      {/* Modal editar */}
       <Modal title="Editar datos del cliente" open={editarModal}
         onCancel={() => setEditarModal(false)} onOk={() => formEditar.submit()}
-        okText="Guardar" cancelText="Cancelar" width={560}>
+        okText="Guardar" cancelText="Cancelar" width={520}>
         <Form form={formEditar} layout="vertical" onFinish={handleEditar}>
           <Form.Item name="nombres" label="Nombres" rules={[{ required: true }]}><Input /></Form.Item>
           <Form.Item name="apellidos" label="Apellidos" rules={[{ required: true }]}><Input /></Form.Item>
@@ -487,20 +512,8 @@ const ClientesPage = () => {
         </Form>
       </Modal>
 
-      {/* Modal cambio de estatus */}
-      {estatusModal && estatusCliente && (
-        <CambiarEstatusModal open={!!estatusModal} proceso={estatusModal}
-          tieneContacto={!!(estatusCliente.correo || estatusCliente.telefono)}
-          onCancel={() => { setEstatusModal(null); setEstatusCliente(null); }}
-          onConfirm={handleCambiarEstatus} />
-      )}
-
-      {/* Drawer historial */}
-      <HistorialEstatusDrawer open={!!historialProceso} proceso={historialProceso}
-        clienteNombre={historialClienteNombre} onClose={() => setHistorialProceso(null)} />
-
       {/* Modal asignar unidad */}
-      <Modal title="Asignar unidad al cliente" open={!!crearProcesoModal}
+      <Modal title="Asignar unidad" open={!!crearProcesoModal}
         onCancel={() => { setCrearProcesoModal(null); formProceso.resetFields(); }}
         onOk={() => formProceso.submit()} okText="Crear proceso" cancelText="Cancelar">
         <Form form={formProceso} layout="vertical" onFinish={handleCrearProceso}>
@@ -516,6 +529,18 @@ const ClientesPage = () => {
           </Form.Item>
         </Form>
       </Modal>
+
+      {/* Modal estatus */}
+      {estatusModal && estatusCliente && (
+        <CambiarEstatusModal open proceso={estatusModal}
+          tieneContacto={!!(estatusCliente.correo || estatusCliente.telefono)}
+          onCancel={() => { setEstatusModal(null); setEstatusCliente(null); }}
+          onConfirm={handleCambiarEstatus} />
+      )}
+
+      {/* Drawer historial */}
+      <HistorialEstatusDrawer open={!!historialProceso} proceso={historialProceso}
+        clienteNombre={historialNombre} onClose={() => setHistorialProceso(null)} />
     </div>
   );
 };

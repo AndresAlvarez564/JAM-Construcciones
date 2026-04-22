@@ -110,12 +110,6 @@ export class JamStack extends cdk.Stack {
     });
 
     inventarioTable.addGlobalSecondaryIndex({
-      indexName: 'gsi-torre',
-      partitionKey: { name: 'torre_id', type: dynamodb.AttributeType.STRING },
-      sortKey: { name: 'sk', type: dynamodb.AttributeType.STRING },
-    });
-
-    inventarioTable.addGlobalSecondaryIndex({
       indexName: 'gsi-inmobiliaria',
       partitionKey: { name: 'bloqueado_por', type: dynamodb.AttributeType.STRING },
       sortKey: { name: 'sk', type: dynamodb.AttributeType.STRING },
@@ -446,12 +440,6 @@ export class JamStack extends cdk.Stack {
       authorizationType: apigateway.AuthorizationType.COGNITO,
     });
 
-    const torresPublicResource = proyectoResource.addResource('torres');
-    torresPublicResource.addMethod('GET', proyectosLambdaIntegration, {
-      authorizer: cognitoAuthorizer,
-      authorizationType: apigateway.AuthorizationType.COGNITO,
-    });
-
     const unidadesResource = proyectoResource.addResource('unidades');
     unidadesResource.addMethod('GET', proyectosLambdaIntegration, {
       authorizer: cognitoAuthorizer,
@@ -695,22 +683,6 @@ export class JamStack extends cdk.Stack {
       authorizationType: apigateway.AuthorizationType.COGNITO,
     });
     adminEtapaResource.addMethod('DELETE', proyectosLambdaIntegration, {
-      authorizer: cognitoAuthorizer,
-      authorizationType: apigateway.AuthorizationType.COGNITO,
-    });
-
-    // /admin/proyectos/{id}/torres
-    const adminTorresResource = adminProyectoResource.addResource('torres');
-    adminTorresResource.addMethod('POST', proyectosLambdaIntegration, {
-      authorizer: cognitoAuthorizer,
-      authorizationType: apigateway.AuthorizationType.COGNITO,
-    });
-    const adminTorreResource = adminTorresResource.addResource('{torre_id}');
-    adminTorreResource.addMethod('PUT', proyectosLambdaIntegration, {
-      authorizer: cognitoAuthorizer,
-      authorizationType: apigateway.AuthorizationType.COGNITO,
-    });
-    adminTorreResource.addMethod('DELETE', proyectosLambdaIntegration, {
       authorizer: cognitoAuthorizer,
       authorizationType: apigateway.AuthorizationType.COGNITO,
     });

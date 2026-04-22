@@ -1,5 +1,5 @@
 import { apiGet, apiPost, apiPut, apiDelete } from './api';
-import type { Proyecto, Unidad, Etapa, Torre } from '../types';
+import type { Proyecto, Unidad, Etapa } from '../types';
 
 // Proyectos
 export const getProyectos = (): Promise<Proyecto[]> =>
@@ -33,28 +33,17 @@ export const actualizarEtapa = (proyectoId: string, etapaId: string, data: { nom
 export const eliminarEtapa = (proyectoId: string, etapaId: string): Promise<void> =>
   apiDelete(`/admin/proyectos/${proyectoId}/etapas/${etapaId}`);
 
-// Torres
-export const getTorres = (proyectoId: string): Promise<Torre[]> =>
-  apiGet<Torre[]>(`/proyectos/${proyectoId}/torres`);
-
-export const crearTorre = (proyectoId: string, data: { nombre: string; etapa_id: string; orden?: number }): Promise<Torre> =>
-  apiPost<Torre>(`/admin/proyectos/${proyectoId}/torres`, data);
-
-export const actualizarTorre = (proyectoId: string, torreId: string, data: { nombre?: string; orden?: number }): Promise<void> =>
-  apiPut(`/admin/proyectos/${proyectoId}/torres/${torreId}`, data);
-
-export const eliminarTorre = (proyectoId: string, torreId: string): Promise<void> =>
-  apiDelete(`/admin/proyectos/${proyectoId}/torres/${torreId}`);
-
 // Unidades
 export const getUnidades = (
   proyectoId: string,
-  filtros?: { estado?: string; torre_id?: string; etapa_id?: string }
+  filtros?: { estado?: string; etapa_id?: string; tipo?: string; manzana?: string; piso?: string }
 ): Promise<Unidad[]> => {
   const params = new URLSearchParams();
   if (filtros?.estado) params.append('estado', filtros.estado);
-  if (filtros?.torre_id) params.append('torre_id', filtros.torre_id);
   if (filtros?.etapa_id) params.append('etapa_id', filtros.etapa_id);
+  if (filtros?.tipo) params.append('tipo', filtros.tipo);
+  if (filtros?.manzana) params.append('manzana', filtros.manzana);
+  if (filtros?.piso) params.append('piso', filtros.piso);
   const qs = params.toString();
   return apiGet<Unidad[]>(`/proyectos/${proyectoId}/unidades${qs ? `?${qs}` : ''}`);
 };
@@ -64,14 +53,14 @@ export const getUnidad = (proyectoId: string, unidadId: string): Promise<Unidad>
 
 export const crearUnidad = (
   proyectoId: string,
-  data: { id_unidad: string; etapa_id: string; torre_id: string; metraje: number; precio: number }
+  data: { id_unidad: string; etapa_id: string; metraje: number; precio: number; tipo?: string; manzana?: string; piso?: string }
 ): Promise<Unidad> =>
   apiPost<Unidad>(`/admin/proyectos/${proyectoId}/unidades`, data);
 
 export const actualizarUnidad = (
   proyectoId: string,
   unidadId: string,
-  data: { id_unidad?: string; metraje?: number; precio?: number }
+  data: { id_unidad?: string; etapa_id?: string; metraje?: number; precio?: number; tipo?: string; manzana?: string; piso?: string }
 ): Promise<void> =>
   apiPut(`/admin/proyectos/${proyectoId}/unidades/${unidadId}`, data);
 
