@@ -1,6 +1,7 @@
 from utils.auth import require_admin
 from utils.response import forbidden, not_found, bad_request
 from routes import estatus as estatus_routes
+from routes import analytics as analytics_routes
 
 
 def handler(event, context):
@@ -13,6 +14,10 @@ def handler(event, context):
 
     if not require_admin(event):
         return forbidden()
+
+    # GET /admin/analytics
+    if method == 'GET' and path.endswith('/analytics'):
+        return analytics_routes.get_analytics(event)
 
     # GET /admin/clientes/{cedula}/procesos
     if method == 'GET' and cedula and path.endswith('/procesos'):

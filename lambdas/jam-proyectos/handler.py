@@ -46,7 +46,7 @@ def handler(event, context):
         return proyectos.eliminar(proyecto_id)
 
     if method == 'POST' and path.endswith('/imagen') and is_admin:
-        return proyectos.presigned_imagen(proyecto_id)
+        return proyectos.presigned_imagen(proyecto_id, event)
 
     # ===== ETAPAS =====
 

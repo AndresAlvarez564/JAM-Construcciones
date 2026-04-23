@@ -100,25 +100,31 @@ export function useInventario() {
     try {
       setUploadingImagen(true);
       let imagen_url: string | undefined;
+
+      const uploadImagen = async (proyectoId: string) => {
+        if (!imagenFile?.originFileObj) return undefined;
+        const contentType = imagenFile.originFileObj.type || 'image/jpeg';
+        const { upload_url, public_url } = await getPresignedImagenProyecto(proyectoId, contentType);
+        const res = await fetch(upload_url, { method: 'PUT', body: imagenFile.originFileObj, headers: { 'Content-Type': contentType } });
+        if (!res.ok) throw new Error(`Error subiendo imagen a S3: ${res.status} ${res.statusText}`);
+        return `${public_url}?t=${Date.now()}`;
+      };
+
       if (modoProyecto === 'crear') {
         const p = await crearProyecto(values);
-        if (imagenFile?.originFileObj) {
-          const { upload_url, public_url } = await getPresignedImagenProyecto(p.proyecto_id);
-          await fetch(upload_url, { method: 'PUT', body: imagenFile.originFileObj, headers: { 'Content-Type': 'image/jpeg' } });
-          await actualizarProyecto(p.proyecto_id, { imagen_url: public_url });
-        }
+        imagen_url = await uploadImagen(p.proyecto_id);
+        if (imagen_url) await actualizarProyecto(p.proyecto_id, { imagen_url });
         message.success('Proyecto creado');
       } else if (proyectoEditando) {
-        if (imagenFile?.originFileObj) {
-          const { upload_url, public_url } = await getPresignedImagenProyecto(proyectoEditando.proyecto_id);
-          await fetch(upload_url, { method: 'PUT', body: imagenFile.originFileObj, headers: { 'Content-Type': 'image/jpeg' } });
-          imagen_url = public_url;
-        }
+        imagen_url = await uploadImagen(proyectoEditando.proyecto_id);
         await actualizarProyecto(proyectoEditando.proyecto_id, { ...values, ...(imagen_url ? { imagen_url } : {}) });
         message.success('Proyecto actualizado');
       }
       await cargarProyectos(); setModalProyecto(false); setImagenFile(null);
-    } catch { message.error('Error al guardar proyecto'); }
+    } catch (err) {
+      console.error('Error al guardar proyecto:', err);
+      message.error(err instanceof Error ? err.message : 'Error al guardar proyecto');
+    }
     finally { setUploadingImagen(false); }
   };
 

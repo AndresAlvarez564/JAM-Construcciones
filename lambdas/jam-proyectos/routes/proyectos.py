@@ -106,12 +106,21 @@ def eliminar(proyecto_id):
 
 
 
-def presigned_imagen(proyecto_id):
+def presigned_imagen(proyecto_id, event=None):
     """Genera una presigned URL para subir imagen de portada del proyecto a S3."""
     if not ASSETS_BUCKET:
         return bad_request('ASSETS_BUCKET no configurado')
 
-    ext = 'jpg'
+    body = json.loads((event or {}).get('body') or '{}')
+    content_type = body.get('content_type', 'image/jpeg')
+
+    ext_map = {
+        'image/jpeg': 'jpg',
+        'image/png': 'png',
+        'image/webp': 'webp',
+        'image/gif': 'gif',
+    }
+    ext = ext_map.get(content_type, 'jpg')
     key = f'assets/proyectos/{proyecto_id}/portada.{ext}'
 
     presigned = s3_client.generate_presigned_url(
@@ -119,7 +128,7 @@ def presigned_imagen(proyecto_id):
         Params={
             'Bucket': ASSETS_BUCKET,
             'Key': key,
-            'ContentType': 'image/jpeg',
+            'ContentType': content_type,
         },
         ExpiresIn=300,  # 5 minutos
     )

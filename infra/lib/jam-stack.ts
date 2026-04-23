@@ -703,6 +703,12 @@ export class JamStack extends cdk.Stack {
       authorizationType: apigateway.AuthorizationType.COGNITO,
     });
 
+    // /admin/analytics
+    adminResource.addResource('analytics').addMethod('GET', crmLambdaIntegration, {
+      authorizer: cognitoAuthorizer,
+      authorizationType: apigateway.AuthorizationType.COGNITO,
+    });
+
     // /publico — rutas sin auth para captura externa de clientes
     const publicoResource = api.root.addResource('publico');
 

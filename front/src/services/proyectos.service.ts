@@ -17,8 +17,8 @@ export const actualizarProyecto = (proyectoId: string, data: { nombre?: string; 
 export const eliminarProyecto = (proyectoId: string): Promise<void> =>
   apiDelete(`/admin/proyectos/${proyectoId}`);
 
-export const getPresignedImagenProyecto = (proyectoId: string): Promise<{ upload_url: string; public_url: string; key: string }> =>
-  apiPost(`/admin/proyectos/${proyectoId}/imagen`, {});
+export const getPresignedImagenProyecto = (proyectoId: string, contentType = 'image/jpeg'): Promise<{ upload_url: string; public_url: string; key: string }> =>
+  apiPost(`/admin/proyectos/${proyectoId}/imagen`, { content_type: contentType });
 
 // Etapas
 export const getEtapas = (proyectoId: string): Promise<Etapa[]> =>
