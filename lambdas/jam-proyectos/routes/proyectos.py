@@ -55,6 +55,7 @@ def crear(event):
 
 def actualizar(proyecto_id, event):
     body = json.loads(event.get('body') or '{}')
+    print(f"[actualizar] proyecto_id={proyecto_id} body_keys={list(body.keys())} imagen_url={body.get('imagen_url','NO')}")
     updates, values, names = [], {}, {}
 
     if 'nombre' in body:
@@ -113,6 +114,7 @@ def presigned_imagen(proyecto_id, event=None):
 
     body = json.loads((event or {}).get('body') or '{}')
     content_type = body.get('content_type', 'image/jpeg')
+    print(f"[presigned_imagen] proyecto_id={proyecto_id} content_type={content_type}")
 
     ext_map = {
         'image/jpeg': 'jpg',
@@ -130,11 +132,11 @@ def presigned_imagen(proyecto_id, event=None):
             'Key': key,
             'ContentType': content_type,
         },
-        ExpiresIn=300,  # 5 minutos
+        ExpiresIn=300,
     )
 
-    # URL pública vía CloudFront
     public_url = f'{CLOUDFRONT_URL}/{key}'
+    print(f"[presigned_imagen] public_url={public_url}")
 
     return ok({
         'upload_url': presigned,

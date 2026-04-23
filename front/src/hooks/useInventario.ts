@@ -96,16 +96,16 @@ export function useInventario() {
   };
 
   // Proyectos
-  const handleGuardarProyecto = async (values: any) => {
+  const handleGuardarProyecto = async (values: any, archivoImagen?: File) => {
     try {
       setUploadingImagen(true);
       let imagen_url: string | undefined;
 
       const uploadImagen = async (proyectoId: string) => {
-        if (!imagenFile?.originFileObj) return undefined;
-        const contentType = imagenFile.originFileObj.type || 'image/jpeg';
+        if (!archivoImagen) return undefined;
+        const contentType = archivoImagen.type || 'image/jpeg';
         const { upload_url, public_url } = await getPresignedImagenProyecto(proyectoId, contentType);
-        const res = await fetch(upload_url, { method: 'PUT', body: imagenFile.originFileObj, headers: { 'Content-Type': contentType } });
+        const res = await fetch(upload_url, { method: 'PUT', body: archivoImagen, headers: { 'Content-Type': contentType } });
         if (!res.ok) throw new Error(`Error subiendo imagen a S3: ${res.status} ${res.statusText}`);
         return `${public_url}?t=${Date.now()}`;
       };

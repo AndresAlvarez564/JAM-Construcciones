@@ -30,6 +30,7 @@ const InventarioPage = () => {
   // Form refs para modales que necesitan reset externo
   const [formProyecto] = Form.useForm();
   const [formUnidad] = Form.useForm();
+  const [imagenFile, setImagenFile] = useState<UploadFile | null>(null);
 
   const abrirEditarUnidad = (u: Unidad) => {
     inv.setModoUnidad('editar');
@@ -93,7 +94,7 @@ const InventarioPage = () => {
             </Tooltip>
           )}
           {inv.isAdmin && inv.vista === 'proyectos' && (
-            <Button type="primary" icon={<PlusOutlined />} onClick={() => { inv.setModoProyecto('crear'); inv.setProyectoEditando(null); inv.setImagenFile(null); formProyecto.resetFields(); inv.setModalProyecto(true); }}>
+            <Button type="primary" icon={<PlusOutlined />} onClick={() => { inv.setModoProyecto('crear'); inv.setProyectoEditando(null); setImagenFile(null); formProyecto.resetFields(); inv.setModalProyecto(true); }}>
               Nuevo proyecto
             </Button>
           )}
@@ -124,7 +125,7 @@ const InventarioPage = () => {
                     <div style={{ position: 'absolute', top: 10, right: 10 }} onClick={e => e.stopPropagation()}>
                       <Space>
                         <Button size="small" type="text" icon={<EditOutlined />} style={{ color: '#fff', background: 'rgba(0,0,0,0.25)', borderRadius: 6 }}
-                          onClick={() => { inv.setModoProyecto('editar'); inv.setProyectoEditando(p); inv.setImagenFile(null); formProyecto.setFieldsValue({ nombre: p.nombre, descripcion: p.descripcion }); inv.setModalProyecto(true); }} />
+                          onClick={() => { inv.setModoProyecto('editar'); inv.setProyectoEditando(p); setImagenFile(null); formProyecto.setFieldsValue({ nombre: p.nombre, descripcion: p.descripcion }); inv.setModalProyecto(true); }} />
                         <Popconfirm title="¿Desactivar proyecto?" okText="Sí" cancelText="No" onConfirm={async () => { await eliminarProyecto(p.proyecto_id); inv.cargarProyectos(); }}>
                           <Button size="small" type="text" danger icon={<DeleteOutlined />} style={{ background: 'rgba(0,0,0,0.25)', borderRadius: 6 }} />
                         </Popconfirm>
@@ -171,15 +172,20 @@ const InventarioPage = () => {
 
       {/* Modal proyecto */}
       <Modal title={inv.modoProyecto === 'crear' ? 'Nuevo proyecto' : 'Editar proyecto'} open={inv.modalProyecto}
-        onCancel={() => { inv.setModalProyecto(false); inv.setImagenFile(null); }}
+        onCancel={() => { inv.setModalProyecto(false); setImagenFile(null); }}
         onOk={() => formProyecto.submit()} okText="Guardar" cancelText="Cancelar" confirmLoading={inv.uploadingImagen}>
-        <Form form={formProyecto} layout="vertical" onFinish={inv.handleGuardarProyecto}>
+        <Form form={formProyecto} layout="vertical" onFinish={values => inv.handleGuardarProyecto(values, imagenFile?.originFileObj)}>
           <Form.Item name="nombre" label="Nombre" rules={[{ required: true }]}><Input /></Form.Item>
           <Form.Item name="descripcion" label="Descripción"><Input.TextArea rows={2} /></Form.Item>
           <Form.Item label="Imagen (opcional)">
-            <Upload beforeUpload={file => { inv.setImagenFile(file as any); return false; }} maxCount={1} accept="image/*"
-              fileList={inv.imagenFile ? [inv.imagenFile] : []} onRemove={() => inv.setImagenFile(null)}>
-              <Button icon={<UploadOutlined />}>Seleccionar imagen</Button>
+            {inv.proyectoEditando?.imagen_url && !imagenFile && (
+              <img src={inv.proyectoEditando.imagen_url} alt="portada actual"
+                style={{ width: '100%', height: 120, objectFit: 'cover', borderRadius: 8, marginBottom: 8 }} />
+            )}
+            <Upload onChange={({ fileList }) => setImagenFile(fileList[0] ?? null)} maxCount={1} accept="image/jpeg,image/png,image/webp"
+              beforeUpload={() => false}
+              fileList={imagenFile ? [imagenFile] : []} listType="picture">
+              <Button icon={<UploadOutlined />}>{inv.proyectoEditando?.imagen_url && !imagenFile ? 'Cambiar imagen' : 'Seleccionar imagen'}</Button>
             </Upload>
           </Form.Item>
         </Form>
