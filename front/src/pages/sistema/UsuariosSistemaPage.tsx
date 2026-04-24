@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react';
 import {
   Table, Button, Modal, Form, Input, Tag, Space,
-  Popconfirm, Typography, Select, Tooltip, message,
+  Popconfirm, Typography, Select, Tooltip, message, Grid, Dropdown,
 } from 'antd';
-import { PlusOutlined, EditOutlined, StopOutlined, CheckOutlined, DeleteOutlined, ReloadOutlined } from '@ant-design/icons';
+import { PlusOutlined, EditOutlined, StopOutlined, CheckOutlined, DeleteOutlined, ReloadOutlined, MoreOutlined } from '@ant-design/icons';
 import {
   getUsuariosSistema, crearUsuarioSistema, actualizarUsuarioSistema,
   deshabilitarUsuarioSistema, habilitarUsuarioSistema, eliminarUsuarioSistema,
@@ -12,6 +12,7 @@ import {
 import type { RolInterno } from '../../types';
 
 const { Title } = Typography;
+const { useBreakpoint } = Grid;
 
 const ROL_LABELS: Record<RolInterno, string> = {
   admin: 'Admin',
@@ -34,6 +35,8 @@ const UsuariosSistemaPage = () => {
   const [modo, setModo] = useState<ModalMode>('crear');
   const [editando, setEditando] = useState<UsuarioSistema | null>(null);
   const [form] = Form.useForm();
+  const { md } = useBreakpoint();
+  const isMobile = !md;
 
   useEffect(() => { cargar(); }, []);
 
@@ -111,56 +114,71 @@ const UsuariosSistemaPage = () => {
       title: 'Rol', dataIndex: 'rol', key: 'rol',
       render: (v: RolInterno) => <Tag color={ROL_COLORS[v]}>{ROL_LABELS[v]}</Tag>,
     },
-    {
+    ...(!isMobile ? [{
       title: 'Estado', dataIndex: 'activo', key: 'activo',
       render: (v: boolean) => <Tag color={v ? 'green' : 'red'}>{v ? 'Activo' : 'Inactivo'}</Tag>,
-    },
+    }] : []),
     {
-      title: '', key: 'acciones', width: 130,
-      render: (_: any, u: UsuarioSistema) => (
-        <Space>
-          <Tooltip title="Editar">
-            <Button size="small" icon={<EditOutlined />} onClick={() => abrirEditar(u)} />
-          </Tooltip>
-          <Popconfirm
-            title={u.activo ? 'Deshabilitar usuario?' : 'Habilitar usuario?'}
-            okText="Si" cancelText="No"
-            onConfirm={() => handleToggle(u)}
-          >
-            <Tooltip title={u.activo ? 'Deshabilitar' : 'Habilitar'}>
-              <Button size="small" danger={u.activo} icon={u.activo ? <StopOutlined /> : <CheckOutlined />} />
+      title: '', key: 'acciones', width: isMobile ? 48 : 130,
+      render: (_: any, u: UsuarioSistema) => {
+        if (isMobile) {
+          const items = [
+            { key: 'editar', icon: <EditOutlined />, label: 'Editar', onClick: () => abrirEditar(u) },
+            {
+              key: 'toggle', icon: u.activo ? <StopOutlined /> : <CheckOutlined />,
+              label: u.activo ? 'Deshabilitar' : 'Habilitar', danger: u.activo,
+              onClick: () => handleToggle(u),
+            },
+            {
+              key: 'eliminar', icon: <DeleteOutlined />, label: 'Eliminar', danger: true,
+              onClick: () => {
+                Modal.confirm({
+                  title: '¿Eliminar usuario?', okText: 'Eliminar',
+                  cancelText: 'Cancelar', okButtonProps: { danger: true },
+                  onOk: () => handleEliminar(u),
+                });
+              },
+            },
+          ];
+          return <Dropdown menu={{ items }} trigger={['click']} placement="bottomRight"><Button size="small" icon={<MoreOutlined />} /></Dropdown>;
+        }
+        return (
+          <Space>
+            <Tooltip title="Editar">
+              <Button size="small" icon={<EditOutlined />} onClick={() => abrirEditar(u)} />
             </Tooltip>
-          </Popconfirm>
-          <Popconfirm
-            title="Eliminar usuario permanentemente?"
-            okText="Si" cancelText="No"
-            okButtonProps={{ danger: true }}
-            onConfirm={() => handleEliminar(u)}
-          >
-            <Tooltip title="Eliminar">
-              <Button size="small" danger icon={<DeleteOutlined />} />
-            </Tooltip>
-          </Popconfirm>
-        </Space>
-      ),
+            <Popconfirm title={u.activo ? 'Deshabilitar usuario?' : 'Habilitar usuario?'} okText="Si" cancelText="No" onConfirm={() => handleToggle(u)}>
+              <Tooltip title={u.activo ? 'Deshabilitar' : 'Habilitar'}>
+                <Button size="small" danger={u.activo} icon={u.activo ? <StopOutlined /> : <CheckOutlined />} />
+              </Tooltip>
+            </Popconfirm>
+            <Popconfirm title="Eliminar usuario permanentemente?" okText="Si" cancelText="No" okButtonProps={{ danger: true }} onConfirm={() => handleEliminar(u)}>
+              <Tooltip title="Eliminar"><Button size="small" danger icon={<DeleteOutlined />} /></Tooltip>
+            </Popconfirm>
+          </Space>
+        );
+      },
     },
   ];
 
   return (
-    <div style={{ padding: 24 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
-        <Title level={2} style={{ margin: 0 }}>Usuarios del sistema</Title>
+    <div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24, gap: 8 }}>
+        <Title level={4} style={{ margin: 0 }}>Usuarios del sistema</Title>
         <Space>
           <Tooltip title="Actualizar">
             <Button icon={<ReloadOutlined />} onClick={cargar} loading={loading} />
           </Tooltip>
-          <Button type="primary" icon={<PlusOutlined />} onClick={abrirCrear}>Nuevo usuario</Button>
+          <Button type="primary" icon={<PlusOutlined />} onClick={abrirCrear}>
+            {isMobile ? '' : 'Nuevo usuario'}
+          </Button>
         </Space>
       </div>
 
       <Table
         dataSource={usuarios} columns={columns}
         rowKey="pk" loading={loading} pagination={{ pageSize: 20 }}
+        scroll={{ x: true }}
       />
 
       <Modal

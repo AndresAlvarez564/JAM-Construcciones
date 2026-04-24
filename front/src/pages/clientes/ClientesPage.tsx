@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import {
   Typography, Table, Tag, Button, Modal, Form, Input, Select,
-  DatePicker, message, Space, Tooltip, Drawer, Spin,
+  DatePicker, message, Space, Tooltip, Spin, Grid,
 } from 'antd';
 import {
   PlusOutlined, ReloadOutlined, UserOutlined, HistoryOutlined,
@@ -12,17 +12,18 @@ import {
   getClientes, getClientesAdmin, buscarClienteAdmin,
   registrarCliente, actualizarClienteAdmin,
 } from '../../services/clientes.service';
-import { getProcesosCliente, getMisProcesos, crearProceso, cambiarEstatus } from '../../services/crm.service';
-import { getProyectos, getUnidades } from '../../services/proyectos.service';
+import { getProcesosCliente, getMisProcesos, cambiarEstatus } from '../../services/crm.service';
+import { getProyectos } from '../../services/proyectos.service';
 import { getInmobiliarias } from '../../services/inmobiliarias.service';
 import type { Inmobiliaria } from '../../services/inmobiliarias.service';
 import { useAuthContext } from '../../context/AuthContext';
-import type { Cliente, Proyecto, Proceso, Unidad } from '../../types';
+import type { Cliente, Proyecto, Proceso } from '../../types';
 import CambiarEstatusModal from '../../components/common/CambiarEstatusModal';
 import HistorialEstatusDrawer from '../../components/common/HistorialEstatusDrawer';
 
 const { Title, Text } = Typography;
 const { Option } = Select;
+const { useBreakpoint } = Grid;
 
 const ESTADO_COLOR: Record<string, string> = {
   captacion: 'blue', disponible: 'default', reserva: 'orange',
@@ -55,6 +56,8 @@ function agruparPorCedula(lista: Cliente[]): ClienteAgrupado[] {
 const ClientesPage = () => {
   const { usuario } = useAuthContext();
   const isAdmin = usuario?.rol !== 'inmobiliaria';
+  const screens = useBreakpoint();
+  const isMobile = !screens.md;
 
   // Lista plana de clientes (para inmobiliaria) o agrupada (para admin)
   const [clientes, setClientes] = useState<Cliente[]>([]);
@@ -81,9 +84,6 @@ const ClientesPage = () => {
   const [formEditar] = Form.useForm();
   const [editarModal, setEditarModal] = useState(false);
   const [editarRegistro, setEditarRegistro] = useState<Cliente | null>(null);
-  const [crearProcesoModal, setCrearProcesoModal] = useState<Cliente | null>(null);
-  const [unidadesProyecto, setUnidadesProyecto] = useState<Unidad[]>([]);
-  const [formProceso] = Form.useForm();
   const [estatusModal, setEstatusModal] = useState<Proceso | null>(null);
   const [estatusCliente, setEstatusCliente] = useState<Cliente | null>(null);
   const [historialProceso, setHistorialProceso] = useState<Proceso | null>(null);
@@ -183,30 +183,6 @@ const ClientesPage = () => {
     } catch { message.error('Error al actualizar'); }
   };
 
-  const abrirCrearProceso = async (registro: Cliente) => {
-    setCrearProcesoModal(registro);
-    formProceso.resetFields();
-    const [disponibles, bloqueadas] = await Promise.all([
-      getUnidades(registro.proyecto_id, { estado: 'disponible' }).catch(() => []),
-      getUnidades(registro.proyecto_id, { estado: 'bloqueada' }).catch(() => []),
-    ]);
-    setUnidadesProyecto([...disponibles, ...bloqueadas]);
-  };
-
-  const handleCrearProceso = async (values: any) => {
-    if (!crearProcesoModal) return;
-    try {
-      await crearProceso(crearProcesoModal.cedula, {
-        inmobiliaria_id: crearProcesoModal.inmobiliaria_id,
-        proyecto_id: crearProcesoModal.proyecto_id,
-        unidad_id: values.unidad_id,
-      });
-      message.success('Proceso creado');
-      setCrearProcesoModal(null);
-      if (drawerCedula) abrirDetalleCedula(drawerCedula);
-    } catch (err: any) { message.error(err?.response?.data?.message || 'Error al crear proceso'); }
-  };
-
   const handleCambiarEstatus = async (estatus: string, notificar: boolean) => {
     if (!estatusModal || !estatusCliente) return;
     try {
@@ -246,31 +222,31 @@ const ClientesPage = () => {
         </div>
       ),
     },
-    {
-      title: 'Proyectos', key: 'proyectos',
-      render: (_: unknown, r: ClienteAgrupado) => (
-        <Space wrap>
-          {r.registros.map(reg => (
-            <Tag key={`${reg.pk}#${reg.sk}`} color={reg.exclusividad_activa ? 'blue' : 'default'}>
-              {proyectoNombre(reg.proyecto_id)}
-            </Tag>
-          ))}
-        </Space>
-      ),
-    },
-    {
-      title: 'Inmobiliarias', key: 'inmos',
-      render: (_: unknown, r: ClienteAgrupado) => {
-        const unicas = [...new Set(r.registros.map(reg => reg.inmobiliaria_id))];
-        return <Space wrap>{unicas.map(id => <Tag key={id}>{inmoNombre(id)}</Tag>)}</Space>;
+    ...(!isMobile ? [
+      {
+        title: 'Proyectos', key: 'proyectos',
+        render: (_: unknown, r: ClienteAgrupado) => (
+          <Space wrap>
+            {r.registros.map(reg => (
+              <Tag key={`${reg.pk}#${reg.sk}`} color={reg.exclusividad_activa ? 'blue' : 'default'}>
+                {proyectoNombre(reg.proyecto_id)}
+              </Tag>
+            ))}
+          </Space>
+        ),
       },
-    },
+      {
+        title: 'Inmobiliarias', key: 'inmos',
+        render: (_: unknown, r: ClienteAgrupado) => {
+          const unicas = [...new Set(r.registros.map(reg => reg.inmobiliaria_id))];
+          return <Space wrap>{unicas.map(id => <Tag key={id}>{inmoNombre(id)}</Tag>)}</Space>;
+        },
+      },
+    ] : []),
     {
-      title: '', key: 'acciones', width: 100,
+      title: '', key: 'acciones', width: 48,
       render: (_: unknown, r: ClienteAgrupado) => (
-        <Button size="small" icon={<EyeOutlined />} onClick={() => abrirDetalleCedula(r.cedula)}>
-          Ver más
-        </Button>
+        <EyeOutlined style={{ color: '#1677ff', fontSize: 16 }} onClick={() => abrirDetalleCedula(r.cedula)} />
       ),
     },
   ];
@@ -300,40 +276,74 @@ const ClientesPage = () => {
   return (
     <div>
       {/* Header */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-        <Title level={4} style={{ margin: 0 }}>Clientes</Title>
-        <Space>
+      <div style={{ marginBottom: 16 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: isMobile ? 10 : 0 }}>
+          <Title level={4} style={{ margin: 0 }}>Clientes</Title>
+          <Space>
+            <Tooltip title="Actualizar">
+              <Button icon={<ReloadOutlined />} onClick={() => { setNextToken(undefined); cargar(proyectoFiltro, inmoFiltro); }} loading={loading} />
+            </Tooltip>
+            {!isAdmin && (
+              <Button type="primary" icon={<PlusOutlined />} onClick={() => setModalOpen(true)}>
+                {isMobile ? '' : 'Registrar cliente'}
+              </Button>
+            )}
+          </Space>
+        </div>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 10 }}>
           <Input prefix={<SearchOutlined />} placeholder="Buscar por nombre o cédula..."
-            style={{ width: 240 }} value={busqueda} onChange={e => setBusqueda(e.target.value)} allowClear />
-          <Select allowClear placeholder="Proyecto" style={{ width: 180 }}
+            style={{ width: isMobile ? '100%' : 240 }} value={busqueda} onChange={e => setBusqueda(e.target.value)} allowClear />
+          <Select allowClear placeholder="Proyecto" style={{ width: isMobile ? '100%' : 180 }}
             value={proyectoFiltro}
             onChange={(v) => { setProyectoFiltro(v); setNextToken(undefined); cargar(v, inmoFiltro); }}>
             {proyectos.map(p => <Option key={p.proyecto_id} value={p.proyecto_id}>{p.nombre}</Option>)}
           </Select>
           {isAdmin && (
-            <Select allowClear placeholder="Inmobiliaria" style={{ width: 180 }}
+            <Select allowClear placeholder="Inmobiliaria" style={{ width: isMobile ? '100%' : 180 }}
               value={inmoFiltro}
               onChange={(v) => { setInmoFiltro(v); setNextToken(undefined); cargar(proyectoFiltro, v); }}>
               {inmobiliarias.map(i => <Option key={i.pk} value={i.pk}>{i.nombre}</Option>)}
             </Select>
           )}
-          <Tooltip title="Actualizar">
-            <Button icon={<ReloadOutlined />} onClick={() => { setNextToken(undefined); cargar(proyectoFiltro, inmoFiltro); }} loading={loading} />
-          </Tooltip>
-          {!isAdmin && (
-            <Button type="primary" icon={<PlusOutlined />} onClick={() => setModalOpen(true)}>Registrar cliente</Button>
-          )}
-        </Space>
+        </div>
       </div>
 
-      {/* Tabla admin — agrupada por cédula */}
+      {/* Tabla/Cards admin — agrupada por cédula */}
       {isAdmin && (
         <>
-          <Table
-            dataSource={agrupados} columns={columnasAdmin}
-            rowKey="cedula" loading={loading}
-            pagination={false} locale={{ emptyText: 'Sin clientes' }}
-          />
+          {isMobile ? (
+            <div>
+              {loading && <div style={{ textAlign: 'center', padding: 40, color: '#aaa' }}>Cargando...</div>}
+              {!loading && agrupados.length === 0 && <div style={{ textAlign: 'center', padding: 40, color: '#aaa' }}>Sin clientes</div>}
+              {agrupados.map(r => (
+                <div key={r.cedula} onClick={() => abrirDetalleCedula(r.cedula)}
+                  style={{ background: '#fff', borderRadius: 12, border: '1px solid #f0f0f0', boxShadow: '0 2px 8px rgba(0,0,0,0.05)', marginBottom: 10, padding: '14px 16px', cursor: 'pointer' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                    <div>
+                      <Text strong style={{ fontSize: 15 }}>{r.nombres} {r.apellidos}</Text>
+                      <div><Text type="secondary" style={{ fontSize: 12 }}>{r.cedula}</Text></div>
+                    </div>
+                    <EyeOutlined style={{ color: '#1677ff', fontSize: 18, marginTop: 2 }} />
+                  </div>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 8 }}>
+                    {r.registros.map(reg => (
+                      <Tag key={`${reg.pk}#${reg.sk}`} color={reg.exclusividad_activa ? 'blue' : 'default'} style={{ margin: 0 }}>
+                        {proyectoNombre(reg.proyecto_id)}
+                      </Tag>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <Table
+              dataSource={agrupados} columns={columnasAdmin}
+              rowKey="cedula" loading={loading}
+              pagination={false} locale={{ emptyText: 'Sin clientes' }}
+              onRow={r => ({ onClick: () => abrirDetalleCedula(r.cedula), style: { cursor: 'pointer' } })}
+              scroll={{ x: true }}
+            />
+          )}
           {nextToken && (
             <div style={{ textAlign: 'center', marginTop: 16 }}>
               <Button onClick={() => cargar(proyectoFiltro, inmoFiltro, nextToken)} loading={loading}>Cargar más</Button>
@@ -342,22 +352,50 @@ const ClientesPage = () => {
         </>
       )}
 
-      {/* Tabla inmobiliaria */}
+      {/* Tabla/Cards inmobiliaria */}
       {!isAdmin && (
-        <Table
-          dataSource={clientesFiltrados} columns={columnasInmo}
-          rowKey={r => `${r.pk}#${r.sk}`} loading={loading}
-          pagination={{ pageSize: 20 }} locale={{ emptyText: 'Sin clientes' }}
-          onRow={r => ({ onClick: () => abrirDrawerInmo(r), style: { cursor: 'pointer' } })}
-        />
+        isMobile ? (
+          <div>
+            {loading && <div style={{ textAlign: 'center', padding: 40, color: '#aaa' }}>Cargando...</div>}
+            {!loading && clientesFiltrados.length === 0 && <div style={{ textAlign: 'center', padding: 40, color: '#aaa' }}>Sin clientes</div>}
+            {clientesFiltrados.map(r => (
+              <div key={`${r.pk}#${r.sk}`} onClick={() => abrirDrawerInmo(r)}
+                style={{ background: '#fff', borderRadius: 12, border: '1px solid #f0f0f0', boxShadow: '0 2px 8px rgba(0,0,0,0.05)', marginBottom: 10, padding: '14px 16px', cursor: 'pointer' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                  <div>
+                    <Text strong style={{ fontSize: 15 }}>{r.nombres} {r.apellidos}</Text>
+                    <div><Text type="secondary" style={{ fontSize: 12 }}>{r.cedula}</Text></div>
+                  </div>
+                  {r.exclusividad_activa
+                    ? <Tag color="green" style={{ margin: 0 }}>Activa</Tag>
+                    : <Tag style={{ margin: 0 }}>Vencida</Tag>}
+                </div>
+                <div style={{ marginTop: 8, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                  <Text type="secondary" style={{ fontSize: 12 }}>{proyectoNombre(r.proyecto_id)}</Text>
+                  <Text type="secondary" style={{ fontSize: 12 }}>· Captado {dayjs(r.fecha_captacion).format('DD/MM/YYYY')}</Text>
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <Table
+            dataSource={clientesFiltrados} columns={columnasInmo}
+            rowKey={r => `${r.pk}#${r.sk}`} loading={loading}
+            pagination={{ pageSize: 20 }} locale={{ emptyText: 'Sin clientes' }}
+            onRow={r => ({ onClick: () => abrirDrawerInmo(r), style: { cursor: 'pointer' } })}
+            scroll={{ x: true }}
+          />
+        )
       )}
 
-      {/* Drawer detalle por cédula — admin */}
-      <Drawer
-        title={drawerCedula ? `Cliente — ${drawerRegistros[0]?.nombres ?? ''} ${drawerRegistros[0]?.apellidos ?? ''}` : ''}
+      {/* Modal detalle por cédula — admin */}
+      <Modal
+        title={drawerCedula ? `${drawerRegistros[0]?.nombres ?? ''} ${drawerRegistros[0]?.apellidos ?? ''}` : ''}
         open={!!drawerCedula}
-        onClose={() => { setDrawerCedula(null); setDrawerRegistros([]); }}
-        width={520}
+        onCancel={() => { setDrawerCedula(null); setDrawerRegistros([]); }}
+        footer={null}
+        width={620}
+        styles={{ body: { maxHeight: '70vh', overflowY: 'auto', padding: '16px 24px' } }}
       >
         {loadingDrawer ? (
           <div style={{ textAlign: 'center', paddingTop: 40 }}><Spin /></div>
@@ -434,36 +472,57 @@ const ClientesPage = () => {
               {/* Procesos de este registro */}
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
                 <Text type="secondary" style={{ fontSize: 12 }}>Procesos de venta</Text>
-                <Button size="small" type="link" style={{ padding: 0, fontSize: 12 }} icon={<PlusOutlined />}
-                  onClick={() => abrirCrearProceso(reg)}>Asignar unidad</Button>
               </div>
               {reg.procesos?.length === 0 ? (
                 <Text type="secondary" style={{ fontSize: 12 }}>Sin procesos</Text>
               ) : (
-                reg.procesos?.map(p => (
-                  <div key={p.sk} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
-                    <Space size={4}>
-                      <Tag color="geekblue" style={{ margin: 0 }}>{p.unidad_nombre || p.unidad_id}</Tag>
-                      <Tag color={ESTADO_COLOR[p.estado]} style={{ margin: 0 }}>{ESTADO_LABEL[p.estado] ?? p.estado}</Tag>
-                    </Space>
-                    <Space size={0}>
-                      <Button size="small" type="link" icon={<SwapOutlined />}
-                        onClick={() => { setEstatusModal(p); setEstatusCliente(reg); }}>Estatus</Button>
-                      <Button size="small" type="link" icon={<HistoryOutlined />}
-                        onClick={() => { setHistorialProceso(p); setHistorialNombre(`${reg.nombres} ${reg.apellidos}`); }}>Historial</Button>
-                    </Space>
-                  </div>
-                ))
+                reg.procesos?.map(p => {
+                  const alertaVencida = p.alerta_separacion_vencida && p.estado === 'separacion' && !p.pago_confirmado;
+                  const diasEnSeparacion = p.fecha_separacion
+                    ? Math.floor((Date.now() - new Date(p.fecha_separacion).getTime()) / 86400000)
+                    : null;
+                  const proximoVencer = !alertaVencida && p.estado === 'separacion' && diasEnSeparacion !== null && diasEnSeparacion >= 25;
+                  return (
+                    <div key={p.sk} style={{ marginBottom: 6 }}>
+                      {alertaVencida && (
+                        <div style={{ background: '#fff2f0', border: '1px solid #ffccc7', borderRadius: 6, padding: '4px 10px', marginBottom: 4, fontSize: 12, color: '#cf1322', display: 'flex', alignItems: 'center', gap: 6 }}>
+                          ⚠️ Separación vencida — 30 días sin pago confirmado
+                        </div>
+                      )}
+                      {proximoVencer && (
+                        <div style={{ background: '#fffbe6', border: '1px solid #ffe58f', borderRadius: 6, padding: '4px 10px', marginBottom: 4, fontSize: 12, color: '#d46b08', display: 'flex', alignItems: 'center', gap: 6 }}>
+                          ⏰ Vence en {30 - diasEnSeparacion!} día{30 - diasEnSeparacion! !== 1 ? 's' : ''} — pendiente pago de separación
+                        </div>
+                      )}
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <Space size={4}>
+                          <Tag color="geekblue" style={{ margin: 0 }}>{p.unidad_nombre || p.unidad_id}</Tag>
+                          <Tag color={ESTADO_COLOR[p.estado]} style={{ margin: 0 }}>{ESTADO_LABEL[p.estado] ?? p.estado}</Tag>
+                        </Space>
+                        <Space size={0}>
+                          <Button size="small" type="link" icon={<SwapOutlined />}
+                            onClick={() => { setEstatusModal(p); setEstatusCliente(reg); }}>Estatus</Button>
+                          <Button size="small" type="link" icon={<HistoryOutlined />}
+                            onClick={() => { setHistorialProceso(p); setHistorialNombre(`${reg.nombres} ${reg.apellidos}`); }}>Historial</Button>
+                        </Space>
+                      </div>
+                    </div>
+                  );
+                })
               )}
             </div>
           </div>
         ))}
-      </Drawer>
+      </Modal>
 
-      {/* Drawer inmobiliaria */}
-      <Drawer
+      {/* Modal detalle inmobiliaria */}
+      <Modal
         title={drawerCliente ? `${drawerCliente.nombres} ${drawerCliente.apellidos}` : ''}
-        open={!!drawerCliente} onClose={() => { setDrawerCliente(null); setDrawerProcesos([]); }} width={420}
+        open={!!drawerCliente}
+        onCancel={() => { setDrawerCliente(null); setDrawerProcesos([]); }}
+        footer={null}
+        width={500}
+        styles={{ body: { maxHeight: '65vh', overflowY: 'auto' } }}
       >
         {drawerCliente && (
           <div>
@@ -514,7 +573,7 @@ const ClientesPage = () => {
             )}
           </div>
         )}
-      </Drawer>
+      </Modal>
 
       {/* Modal registro */}
       <Modal title={<Space><UserOutlined /> Registrar cliente</Space>}
@@ -566,24 +625,6 @@ const ClientesPage = () => {
           </Form.Item>
           <Form.Item name="nacionalidad" label="Nacionalidad"><Input /></Form.Item>
           <Form.Item name="pais_residencia" label="País de residencia"><Input /></Form.Item>
-        </Form>
-      </Modal>
-
-      {/* Modal asignar unidad */}
-      <Modal title="Asignar unidad" open={!!crearProcesoModal}
-        onCancel={() => { setCrearProcesoModal(null); formProceso.resetFields(); }}
-        onOk={() => formProceso.submit()} okText="Crear proceso" cancelText="Cancelar">
-        <Form form={formProceso} layout="vertical" onFinish={handleCrearProceso}>
-          <Form.Item name="unidad_id" label="Unidad" rules={[{ required: true }]}>
-            <Select placeholder="Selecciona una unidad" showSearch optionFilterProp="children">
-              {unidadesProyecto.map(u => (
-                <Option key={u.unidad_id} value={u.unidad_id}>
-                  {u.id_unidad}
-                  {u.estado === 'bloqueada' && <Tag color="warning" style={{ marginLeft: 8 }}>Bloqueada</Tag>}
-                </Option>
-              ))}
-            </Select>
-          </Form.Item>
         </Form>
       </Modal>
 

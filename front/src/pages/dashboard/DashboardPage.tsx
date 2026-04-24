@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import {
   Row, Col, Card, Statistic, Tag, Table, Select, Spin, Typography,
-  Progress, Empty, Tooltip,
+  Progress, Empty, Tooltip, Grid,
 } from 'antd';
 import {
   AppstoreOutlined, TeamOutlined, LockOutlined, CheckCircleOutlined,
@@ -18,6 +18,7 @@ import { ESTADO_UNIDAD_CONFIG, ESTADO_PROCESO_COLOR, ESTADO_PROCESO_LABEL } from
 import useAuth from '../../hooks/useAuth';
 
 const { Text, Title } = Typography;
+const { useBreakpoint } = Grid;
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
@@ -85,6 +86,8 @@ const DashboardPage = () => {
   const { usuario } = useAuth();
   const isAdmin = usuario?.rol === 'admin';
   const isInterno = ['admin', 'coordinador', 'supervisor'].includes(usuario?.rol ?? '');
+  const { md } = useBreakpoint();
+  const isMobile = !md;
 
   const [proyectos, setProyectos] = useState<Proyecto[]>([]);
   const [proyectoId, setProyectoId] = useState('');
@@ -146,7 +149,7 @@ const DashboardPage = () => {
         <Select
           value={proyectoId || undefined}
           onChange={handleProyecto}
-          style={{ minWidth: 220 }}
+          style={{ minWidth: 220, width: isMobile ? '100%' : undefined }}
           options={proyectos.map(p => ({ value: p.proyecto_id, label: p.nombre }))}
           placeholder="Seleccionar proyecto"
         />
@@ -164,6 +167,7 @@ const DashboardPage = () => {
           isAdmin={isAdmin}
           isInterno={isInterno}
           inmoNombre={inmoNombre}
+          isMobile={isMobile}
         />
       )}
     </div>
@@ -172,12 +176,13 @@ const DashboardPage = () => {
 
 // ── Contenido del dashboard (separado para claridad) ─────────────────────────
 const DashboardContent = ({
-  data, isAdmin, isInterno, inmoNombre,
+  data, isAdmin, isInterno, inmoNombre, isMobile,
 }: {
   data: AnalyticsData;
   isAdmin: boolean;
   isInterno: boolean;
   inmoNombre: (id: string) => string;
+  isMobile: boolean;
 }) => {
   const { unidad_stats, proceso_stats, cliente_stats, kpis, velocidad,
     cierres_mensuales, top_unidades, conversion_por_inmobiliaria, demograficos } = data;
@@ -310,10 +315,10 @@ const DashboardContent = ({
                     { title: 'Mes', dataIndex: 'mes', key: 'mes', render: fmtMes },
                     { title: 'Reservas', dataIndex: 'reservas', key: 'r', align: 'center',
                       render: v => <Tag color="orange">{v}</Tag> },
-                    { title: 'Separaciones', dataIndex: 'separaciones', key: 's', align: 'center',
-                      render: v => <Tag color="purple">{v}</Tag> },
-                    { title: 'Total', key: 't', align: 'center',
-                      render: (_, r: any) => <Text strong>{r.reservas + r.separaciones}</Text> },
+                    ...(!isMobile ? [{ title: 'Separaciones', dataIndex: 'separaciones', key: 's', align: 'center' as const,
+                      render: (v: number) => <Tag color="purple">{v}</Tag> }] : []),
+                    { title: 'Total', key: 't', align: 'center' as const,
+                      render: (_: any, r: any) => <Text strong>{r.reservas + r.separaciones}</Text> },
                   ]}
                 />
               )}
@@ -357,15 +362,19 @@ const DashboardContent = ({
                     { title: 'Inmobiliaria', dataIndex: 'inmobiliaria_id', key: 'inmo',
                       render: v => <Text strong>{inmoNombre(v)}</Text> },
                     { title: 'Captados', dataIndex: 'captados', key: 'c', align: 'center' },
-                    { title: 'Reservas', dataIndex: 'reservas', key: 'r', align: 'center',
-                      render: v => <Tag color="orange">{v}</Tag> },
-                    { title: 'Separaciones', dataIndex: 'separaciones', key: 's', align: 'center',
-                      render: v => <Tag color="purple">{v}</Tag> },
-                    { title: 'Desvinculados', dataIndex: 'desvinculados', key: 'd', align: 'center',
-                      render: v => <Tag color="red">{v}</Tag> },
-                    { title: '% Conversión', dataIndex: 'pct_conversion', key: 'pct', align: 'center',
+                    ...(!isMobile ? [
+                      { title: 'Reservas', dataIndex: 'reservas', key: 'r', align: 'center' as const,
+                        render: (v: number) => <Tag color="orange">{v}</Tag> },
+                      { title: 'Separaciones', dataIndex: 'separaciones', key: 's', align: 'center' as const,
+                        render: (v: number) => <Tag color="purple">{v}</Tag> },
+                      { title: 'Desvinculados', dataIndex: 'desvinculados', key: 'd', align: 'center' as const,
+                        render: (v: number) => <Tag color="red">{v}</Tag> },
+                    ] : []),
+                    { title: '% Conv.', dataIndex: 'pct_conversion', key: 'pct', align: 'center' as const,
                       sorter: (a: any, b: any) => a.pct_conversion - b.pct_conversion,
-                      render: (v: number) => (
+                      render: (v: number) => isMobile ? (
+                        <Text style={{ fontSize: 13, fontWeight: 600, color: v >= 30 ? '#52c41a' : '#faad14' }}>{v}%</Text>
+                      ) : (
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 120 }}>
                           <Progress percent={v} size="small" style={{ flex: 1 }}
                             strokeColor={v >= 30 ? '#52c41a' : '#faad14'} showInfo={false} />

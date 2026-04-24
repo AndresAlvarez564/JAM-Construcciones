@@ -49,6 +49,8 @@ def crear(event):
         'activo': True,
         'creado_en': now(),
     }
+    if 'config_precios' in body:
+        item['config_precios'] = body['config_precios']
     inventario.put_item(Item=item)
     return created(item)
 
@@ -68,6 +70,9 @@ def actualizar(proyecto_id, event):
     if 'imagen_url' in body:
         values[':img'] = body['imagen_url']
         updates.append('imagen_url = :img')
+    if 'config_precios' in body:
+        values[':cfg'] = body['config_precios']
+        updates.append('config_precios = :cfg')
 
     if not updates:
         return bad_request('No hay campos para actualizar')

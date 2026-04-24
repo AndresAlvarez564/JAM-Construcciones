@@ -105,10 +105,14 @@ def crear(proyecto_id, event):
         'actualizado_en': ts,
     }
 
-    # Campos opcionales
-    for campo in ('tipo', 'manzana', 'piso'):
+    for campo in ('tipo', 'manzana', 'piso', 'parqueos', 'metraje_terraza', 'metraje_patio', 'comentario',
+                  'precio_reserva', 'precio_separacion', 'precio_inicial', 'cuota_monto', 'cuota_meses', 'contra_entrega'):
         if body.get(campo) is not None:
-            item[campo] = body[campo]
+            item[campo] = body[campo] if campo == 'comentario' else (
+                Decimal(str(body[campo])) if campo in ('parqueos', 'metraje_terraza', 'metraje_patio',
+                    'precio_reserva', 'precio_separacion', 'precio_inicial', 'cuota_monto', 'cuota_meses', 'contra_entrega')
+                    and body[campo] != '' else body[campo]
+            )
 
     inventario.put_item(Item=item)
     return created(item)
@@ -141,9 +145,18 @@ def actualizar(proyecto_id, unidad_id, event):
         except (ValueError, TypeError):
             return bad_request('precio debe ser numérico')
 
-    for campo in ('tipo', 'manzana', 'piso'):
+    for campo in ('tipo', 'manzana', 'piso', 'parqueos', 'metraje_terraza', 'metraje_patio', 'comentario',
+                  'precio_reserva', 'precio_separacion', 'precio_inicial', 'cuota_monto', 'cuota_meses', 'contra_entrega'):
         if campo in body:
-            values[f':{campo}'] = body[campo]
+            if campo in ('parqueos', 'metraje_terraza', 'metraje_patio',
+                         'precio_reserva', 'precio_separacion', 'precio_inicial', 'cuota_monto', 'cuota_meses', 'contra_entrega') \
+                    and body[campo] not in (None, ''):
+                try:
+                    values[f':{campo}'] = Decimal(str(body[campo]))
+                except (ValueError, TypeError):
+                    return bad_request(f'{campo} debe ser numérico')
+            else:
+                values[f':{campo}'] = body[campo]
             updates.append(f'#{campo} = :{campo}')
             names[f'#{campo}'] = campo
 

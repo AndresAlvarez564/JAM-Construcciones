@@ -152,20 +152,31 @@ export function useInventario() {
 
   // Unidades
   const handleGuardarUnidad = async (values: any) => {
+    const payload = {
+      id_unidad: values.id_unidad,
+      etapa_id: values.etapa_id,
+      metraje: values.metraje != null ? parseFloat(values.metraje) : undefined,
+      metraje_terraza: values.metraje_terraza != null ? parseFloat(values.metraje_terraza) : undefined,
+      metraje_patio: values.metraje_patio != null ? parseFloat(values.metraje_patio) : undefined,
+      precio: values.precio != null ? parseFloat(values.precio) : undefined,
+      precio_reserva: values.precio_reserva != null ? parseFloat(values.precio_reserva) : undefined,
+      precio_separacion: values.precio_separacion != null ? parseFloat(values.precio_separacion) : undefined,
+      precio_inicial: values.precio_inicial != null ? parseFloat(values.precio_inicial) : undefined,
+      cuota_monto: values.cuota_monto != null ? parseFloat(values.cuota_monto) : undefined,
+      cuota_meses: values.cuota_meses != null ? parseInt(values.cuota_meses) : undefined,
+      contra_entrega: values.contra_entrega != null ? parseFloat(values.contra_entrega) : undefined,
+      tipo: values.tipo,
+      manzana: values.manzana,
+      piso: values.piso,
+      parqueos: values.parqueos != null ? parseInt(values.parqueos) : undefined,
+      comentario: values.comentario,
+    };
     try {
       if (modoUnidad === 'crear') {
-        await crearUnidad(proyectoId, {
-          id_unidad: values.id_unidad, etapa_id: values.etapa_id,
-          metraje: parseFloat(values.metraje), precio: parseFloat(values.precio),
-          tipo: values.tipo, manzana: values.manzana, piso: values.piso,
-        });
+        await crearUnidad(proyectoId, payload);
         message.success('Unidad creada');
       } else if (unidadEditando) {
-        await actualizarUnidad(proyectoId, unidadEditando.unidad_id, {
-          id_unidad: values.id_unidad, etapa_id: values.etapa_id,
-          metraje: parseFloat(values.metraje), precio: parseFloat(values.precio),
-          tipo: values.tipo, manzana: values.manzana, piso: values.piso,
-        });
+        await actualizarUnidad(proyectoId, unidadEditando.unidad_id, payload);
         message.success('Unidad actualizada');
       }
       await cargarUnidades(); setModalUnidad(false);

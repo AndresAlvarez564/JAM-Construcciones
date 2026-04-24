@@ -1,5 +1,5 @@
 ﻿import { useState } from 'react';
-import { Button, Modal, Form, Input, Space, Tooltip, Row, Col, Popconfirm, Upload, Select, Typography } from 'antd';
+import { Button, Modal, Form, Input, Space, Tooltip, Row, Col, Popconfirm, Upload, Select, Typography, Grid } from 'antd';
 import { PlusOutlined, AppstoreOutlined, EditOutlined, DeleteOutlined, SettingOutlined, ArrowLeftOutlined, ReloadOutlined, UploadOutlined } from '@ant-design/icons';
 import type { UploadFile } from 'antd';
 import { useInventario } from '../../hooks/useInventario';
@@ -16,9 +16,12 @@ import { message } from 'antd';
 
 const { Title, Text } = Typography;
 const { Option } = Select;
+const { useBreakpoint } = Grid;
 
 const InventarioPage = () => {
   const inv = useInventario();
+  const screens = useBreakpoint();
+  const isMobile = !screens.md;
 
   // Estado local solo para bloqueo (no pertenece al hook de inventario)
   const [modalBloqueo, setModalBloqueo] = useState(false);
@@ -29,13 +32,11 @@ const InventarioPage = () => {
 
   // Form refs para modales que necesitan reset externo
   const [formProyecto] = Form.useForm();
-  const [formUnidad] = Form.useForm();
   const [imagenFile, setImagenFile] = useState<UploadFile | null>(null);
 
   const abrirEditarUnidad = (u: Unidad) => {
     inv.setModoUnidad('editar');
     inv.setUnidadEditando(u);
-    formUnidad.setFieldsValue({ id_unidad: u.id_unidad, etapa_id: u.etapa_id, metraje: u.metraje, precio: u.precio, tipo: u.tipo, manzana: u.manzana, piso: u.piso });
     inv.setModalUnidad(true);
   };
 
@@ -78,35 +79,39 @@ const InventarioPage = () => {
   return (
     <div>
       {/* Header */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          {inv.vista === 'unidades' && (
-            <Button icon={<ArrowLeftOutlined />} onClick={inv.volverAProyectos} type="text" />
-          )}
-          <Title level={4} style={{ margin: 0 }}>
-            {inv.vista === 'proyectos' ? 'Proyectos' : inv.proyectoActual?.nombre ?? 'Inventario'}
-          </Title>
-        </div>
-        <Space>
-          {inv.vista === 'unidades' && (
-            <Tooltip title="Actualizar">
-              <Button icon={<ReloadOutlined />} onClick={() => inv.cargarUnidades()} loading={inv.loading} />
-            </Tooltip>
-          )}
-          {inv.isAdmin && inv.vista === 'proyectos' && (
-            <Button type="primary" icon={<PlusOutlined />} onClick={() => { inv.setModoProyecto('crear'); inv.setProyectoEditando(null); setImagenFile(null); formProyecto.resetFields(); inv.setModalProyecto(true); }}>
-              Nuevo proyecto
-            </Button>
-          )}
-          {inv.isAdmin && inv.vista === 'unidades' && (
-            <Space>
-              <Button icon={<SettingOutlined />} onClick={() => inv.setDrawerEtapas(true)}>Etapas</Button>
-              <Button type="primary" icon={<PlusOutlined />} onClick={() => { inv.setModoUnidad('crear'); inv.setUnidadEditando(null); formUnidad.resetFields(); inv.setModalUnidad(true); }}>
-                Nueva unidad
+      <div style={{ marginBottom: 20 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+            {inv.vista === 'unidades' && (
+              <Button icon={<ArrowLeftOutlined />} onClick={inv.volverAProyectos} type="text" style={{ flexShrink: 0 }} />
+            )}
+            <Title level={4} style={{ margin: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: isMobile ? 160 : 'none' }}>
+              {inv.vista === 'proyectos' ? 'Proyectos' : inv.proyectoActual?.nombre ?? 'Inventario'}
+            </Title>
+          </div>
+          <Space wrap>
+            {inv.vista === 'unidades' && (
+              <Tooltip title="Actualizar">
+                <Button icon={<ReloadOutlined />} onClick={() => inv.cargarUnidades()} loading={inv.loading} />
+              </Tooltip>
+            )}
+            {inv.isAdmin && inv.vista === 'proyectos' && (
+              <Button type="primary" icon={<PlusOutlined />} onClick={() => { inv.setModoProyecto('crear'); inv.setProyectoEditando(null); setImagenFile(null); formProyecto.resetFields(); inv.setModalProyecto(true); }}>
+                {isMobile ? 'Nuevo' : 'Nuevo proyecto'}
               </Button>
-            </Space>
-          )}
-        </Space>
+            )}
+            {inv.isAdmin && inv.vista === 'unidades' && (
+              <>
+                <Button icon={<SettingOutlined />} onClick={() => inv.setDrawerEtapas(true)}>
+                  {isMobile ? '' : 'Etapas'}
+                </Button>
+                <Button type="primary" icon={<PlusOutlined />} onClick={() => { inv.setModoUnidad('crear'); inv.setUnidadEditando(null); inv.setModalUnidad(true); }}>
+                  {isMobile ? '' : 'Nueva unidad'}
+                </Button>
+              </>
+            )}
+          </Space>
+        </div>
       </div>
 
       {/* Vista proyectos */}
@@ -147,18 +152,60 @@ const InventarioPage = () => {
       {/* Vista unidades */}
       {inv.vista === 'unidades' && (
         <>
-          <Space wrap style={{ marginBottom: 16 }}>
-            <Select allowClear placeholder="Etapa" style={{ width: 150 }} value={inv.filtroEtapa || undefined} onChange={v => inv.setFiltroEtapa(v || '')}>
-              {inv.etapas.map(e => <Option key={e.etapa_id} value={e.etapa_id}>{e.nombre}</Option>)}
-            </Select>
-            <Select allowClear placeholder="Estado" style={{ width: 150 }} value={inv.filtroEstado || undefined} onChange={v => inv.setFiltroEstado(v || '')}>
-              {Object.entries(ESTADO_UNIDAD_CONFIG).map(([k, v]) => <Option key={k} value={k}>{v.label}</Option>)}
-            </Select>
-            <Input placeholder="Tipo" style={{ width: 120 }} value={inv.filtroTipo} onChange={e => inv.setFiltroTipo(e.target.value)} allowClear />
-            <Input placeholder="Manzana" style={{ width: 120 }} value={inv.filtroManzana} onChange={e => inv.setFiltroManzana(e.target.value)} allowClear />
-            <Input placeholder="Piso" style={{ width: 100 }} value={inv.filtroPiso} onChange={e => inv.setFiltroPiso(e.target.value)} allowClear />
-            <Button onClick={() => inv.cargarUnidades()} loading={inv.loading}>Aplicar filtros</Button>
-          </Space>
+          {/* Barra de filtros */}
+          <div style={{
+            background: '#fff', borderRadius: 12, border: '1px solid #f0f0f0',
+            padding: '16px 20px', marginBottom: 20,
+            boxShadow: '0 1px 4px rgba(0,0,0,0.04)',
+          }}>
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(auto-fill, minmax(130px, 1fr))',
+              gap: 12,
+              alignItems: 'end',
+            }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                <span style={{ fontSize: 11, color: '#8c8c8c', fontWeight: 500, textTransform: 'uppercase', letterSpacing: 0.5 }}>Etapa</span>
+                <Select allowClear placeholder="Todas" style={{ width: '100%' }}
+                  value={inv.filtroEtapa || undefined} onChange={v => inv.setFiltroEtapa(v || '')}>
+                  {inv.etapas.map(e => <Option key={e.etapa_id} value={e.etapa_id}>{e.nombre}</Option>)}
+                </Select>
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                <span style={{ fontSize: 11, color: '#8c8c8c', fontWeight: 500, textTransform: 'uppercase', letterSpacing: 0.5 }}>Estado</span>
+                <Select allowClear placeholder="Todos" style={{ width: '100%' }}
+                  value={inv.filtroEstado || undefined} onChange={v => inv.setFiltroEstado(v || '')}>
+                  {Object.entries(ESTADO_UNIDAD_CONFIG).map(([k, v]) => <Option key={k} value={k}>{v.label}</Option>)}
+                </Select>
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                <span style={{ fontSize: 11, color: '#8c8c8c', fontWeight: 500, textTransform: 'uppercase', letterSpacing: 0.5 }}>Tipo</span>
+                <Input placeholder="Ej: D" style={{ width: '100%' }} value={inv.filtroTipo} onChange={e => inv.setFiltroTipo(e.target.value)} allowClear />
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                <span style={{ fontSize: 11, color: '#8c8c8c', fontWeight: 500, textTransform: 'uppercase', letterSpacing: 0.5 }}>Manzana</span>
+                <Input placeholder="Ej: A" style={{ width: '100%' }} value={inv.filtroManzana} onChange={e => inv.setFiltroManzana(e.target.value)} allowClear />
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                <span style={{ fontSize: 11, color: '#8c8c8c', fontWeight: 500, textTransform: 'uppercase', letterSpacing: 0.5 }}>Piso</span>
+                <Input placeholder="Ej: 3" style={{ width: '100%' }} value={inv.filtroPiso} onChange={e => inv.setFiltroPiso(e.target.value)} allowClear />
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                <span style={{ fontSize: 11, color: 'transparent', userSelect: 'none' }}>_</span>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <Button type="primary" onClick={() => inv.cargarUnidades()} loading={inv.loading} style={{ flex: 1 }}>
+                    Aplicar
+                  </Button>
+                  {(inv.filtroEtapa || inv.filtroEstado || inv.filtroTipo || inv.filtroManzana || inv.filtroPiso) && (
+                    <Button onClick={() => { inv.setFiltroEtapa(''); inv.setFiltroEstado(''); inv.setFiltroTipo(''); inv.setFiltroManzana(''); inv.setFiltroPiso(''); inv.cargarUnidades(); }}>
+                      ✕
+                    </Button>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+
           <TablaUnidades
             unidades={inv.unidades} etapas={inv.etapas} loading={inv.loading}
             isAdmin={inv.isAdmin} isInmobiliaria={inv.isInmobiliaria}
@@ -183,8 +230,7 @@ const InventarioPage = () => {
                 style={{ width: '100%', height: 120, objectFit: 'cover', borderRadius: 8, marginBottom: 8 }} />
             )}
             <Upload onChange={({ fileList }) => setImagenFile(fileList[0] ?? null)} maxCount={1} accept="image/jpeg,image/png,image/webp"
-              beforeUpload={() => false}
-              fileList={imagenFile ? [imagenFile] : []} listType="picture">
+              beforeUpload={() => false} fileList={imagenFile ? [imagenFile] : []} listType="picture">
               <Button icon={<UploadOutlined />}>{inv.proyectoEditando?.imagen_url && !imagenFile ? 'Cambiar imagen' : 'Seleccionar imagen'}</Button>
             </Upload>
           </Form.Item>

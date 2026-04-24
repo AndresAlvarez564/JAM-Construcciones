@@ -2,11 +2,11 @@ import { useEffect, useState, useCallback } from 'react';
 import {
   Typography, Table, Tag, Button, Space, Popconfirm,
   Modal, Form, InputNumber, Input, message, Tooltip, Badge, Tabs,
-  DatePicker, Select, Divider, Radio,
+  DatePicker, Select, Divider, Radio, Dropdown, Grid,
 } from 'antd';
 import {
   UnlockOutlined, ClockCircleOutlined, ReloadOutlined, FieldTimeOutlined,
-  HistoryOutlined, UserAddOutlined, SearchOutlined,
+  HistoryOutlined, UserAddOutlined, SearchOutlined, MoreOutlined,
 } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { getBloquesActivos, liberarBloqueo, extenderBloqueo, getHistorialBloqueos, bloquearUnidad } from '../../services/bloqueos.service';
@@ -17,6 +17,7 @@ import type { Inmobiliaria } from '../../services/inmobiliarias.service';
 import type { Bloqueo, Proyecto, HistorialBloqueo, Cliente } from '../../types';
 
 const { Title, Text } = Typography;
+const { useBreakpoint } = Grid;
 
 const formatTiempo = (segundos: number) => {
   if (segundos <= 0) return 'Vencido';
@@ -51,6 +52,8 @@ const BloqueosPage = () => {
   const [clientesInmo, setClientesInmo] = useState<Cliente[]>([]);
   const [loadingClientes, setLoadingClientes] = useState(false);
   const [clienteSeleccionado, setClienteSeleccionado] = useState<Cliente | null>(null);
+  const screens = useBreakpoint();
+  const isMobile = !screens.md;
 
   const cargar = useCallback(async () => {
     setLoading(true);
@@ -234,109 +237,62 @@ const BloqueosPage = () => {
 
   const columns = [
     {
-      title: 'Unidad',
-      dataIndex: 'id_unidad',
-      key: 'id_unidad',
+      title: 'Unidad', dataIndex: 'id_unidad', key: 'id_unidad',
       render: (v: string, r: Bloqueo) => (
         <Text strong>{[r.torre_nombre, v || r.unidad_id].filter(Boolean).join(' · ')}</Text>
       ),
     },
+    ...(!isMobile ? [
+      { title: 'Proyecto', dataIndex: 'proyecto_id', key: 'proyecto_id', render: (v: string) => proyectoNombre(v) },
+      { title: 'Bloqueado por', dataIndex: 'bloqueado_por', key: 'bloqueado_por', render: (v: string) => <Tag>{inmoNombre(v)}</Tag> },
+      {
+        title: 'Cliente', dataIndex: 'cliente_cedula', key: 'cliente_cedula',
+        render: (v: string, r: any) => v
+          ? <span><Tag color="green">Con cliente</Tag>{r.cliente_nombre && <Text type="secondary" style={{ fontSize: 12, marginLeft: 4 }}>{r.cliente_nombre}</Text>}</span>
+          : <Tag color="orange">Sin cliente</Tag>,
+      },
+      { title: 'Vence', dataIndex: 'fecha_liberacion', key: 'fecha_liberacion', render: (v: string) => new Date(v).toLocaleString('es-VE') },
+    ] : []),
     {
-      title: 'Proyecto',
-      dataIndex: 'proyecto_id',
-      key: 'proyecto_id',
-      render: (v: string) => proyectoNombre(v),
-    },
-    {
-      title: 'Bloqueado por',
-      dataIndex: 'bloqueado_por',
-      key: 'bloqueado_por',
-      render: (v: string) => <Tag>{inmoNombre(v)}</Tag>,
-    },
-    {
-      title: 'Cliente',
-      dataIndex: 'cliente_cedula',
-      key: 'cliente_cedula',
-      render: (v: string, r: any) => v
-        ? <span><Tag color="green">Con cliente</Tag>{r.cliente_nombre && <Text type="secondary" style={{ fontSize: 12, marginLeft: 4 }}>{r.cliente_nombre}</Text>}</span>
-        : <Tag color="orange">Sin cliente</Tag>,
-    },
-    {
-      title: 'Fecha bloqueo',
-      dataIndex: 'fecha_bloqueo',
-      key: 'fecha_bloqueo',
-      render: (v: string) => new Date(v).toLocaleString('es-VE'),
-    },
-    {
-      title: 'Vence',
-      dataIndex: 'fecha_liberacion',
-      key: 'fecha_liberacion',
-      render: (v: string) => new Date(v).toLocaleString('es-VE'),
-    },
-    {
-      title: 'Tiempo restante',
-      dataIndex: 'tiempo_restante',
-      key: 'tiempo_restante',
+      title: 'Tiempo', dataIndex: 'tiempo_restante', key: 'tiempo_restante',
       render: (v: number) => (
-        <Badge
-          status={tiempoColor(v)}
-          text={
-            <Text style={{ color: v < 5 * 3600 ? (v <= 0 ? '#ff4d4f' : '#faad14') : '#52c41a' }}>
-              <ClockCircleOutlined style={{ marginRight: 4 }} />
-              {formatTiempo(v)}
-            </Text>
-          }
-        />
+        <Badge status={tiempoColor(v)} text={
+          <Text style={{ color: v < 5 * 3600 ? (v <= 0 ? '#ff4d4f' : '#faad14') : '#52c41a', fontSize: 12 }}>
+            <ClockCircleOutlined style={{ marginRight: 4 }} />{formatTiempo(v)}
+          </Text>
+        } />
       ),
     },
     {
-      title: 'Acciones',
-      key: 'acciones',
-      render: (_: unknown, record: Bloqueo) => (
-        <Space>
-          {!record.cliente_cedula && (
-            <Tooltip title="Asignar cliente a este bloqueo">
-              <Button
-                size="small"
-                icon={<UserAddOutlined />}
-                onClick={() => abrirAsignarCliente(record)}
-              >
-                Asignar cliente
-              </Button>
-            </Tooltip>
-          )}
-          <Tooltip title="Extender bloqueo">
-            <Button size="small" icon={<FieldTimeOutlined />} onClick={() => abrirExtender(record)}>
-              Extender
-            </Button>
-          </Tooltip>
-          <Popconfirm
-            title="¿Liberar este bloqueo?"
-            description="La unidad volverá a estar disponible."
-            okText="Liberar"
-            cancelText="Cancelar"
-            okButtonProps={{ danger: true }}
-            onConfirm={() => handleLiberar(record)}
-          >
-            <Tooltip title="Liberar manualmente">
-              <Button size="small" danger icon={<UnlockOutlined />}>Liberar</Button>
-            </Tooltip>
-          </Popconfirm>
-        </Space>
-      ),
+      title: '', key: 'acciones', width: 48,
+      render: (_: unknown, record: Bloqueo) => {
+        const items = [
+          ...(!record.cliente_cedula ? [{ key: 'asignar', icon: <UserAddOutlined />, label: 'Asignar cliente', onClick: () => abrirAsignarCliente(record) }] : []),
+          { key: 'extender', icon: <FieldTimeOutlined />, label: 'Extender', onClick: () => abrirExtender(record) },
+          {
+            key: 'liberar', icon: <UnlockOutlined />, label: 'Liberar', danger: true,
+            onClick: () => Modal.confirm({
+              title: '¿Liberar este bloqueo?', content: 'La unidad volverá a estar disponible.',
+              okText: 'Liberar', cancelText: 'Cancelar', okButtonProps: { danger: true },
+              onOk: () => handleLiberar(record),
+            }),
+          },
+        ];
+        return <Dropdown menu={{ items }} trigger={['click']} placement="bottomRight"><Button size="small" icon={<MoreOutlined />} /></Dropdown>;
+      },
     },
   ];
 
   return (
     <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24, flexWrap: 'wrap', gap: 8 }}>
         <Title level={4} style={{ margin: 0 }}>Bloqueos</Title>
-        <Space>
-          <Select allowClear placeholder="Filtrar por proyecto" style={{ width: 200 }}
+        <Space wrap>
+          <Select allowClear placeholder="Filtrar por proyecto" style={{ width: isMobile ? '100%' : 200 }}
             value={proyectoFiltro} onChange={setProyectoFiltro}>
             {proyectos.map(p => <Select.Option key={p.proyecto_id} value={p.proyecto_id}>{p.nombre}</Select.Option>)}
           </Select>
-          <Button icon={<ReloadOutlined />} onClick={cargar} loading={loading}>Actualizar</Button>
+          <Button icon={<ReloadOutlined />} onClick={cargar} loading={loading}>{!isMobile && 'Actualizar'}</Button>
         </Space>
       </div>
 
@@ -347,7 +303,42 @@ const BloqueosPage = () => {
           {
             key: 'activos',
             label: `Activos (${bloqueos.filter(b => !proyectoFiltro || b.proyecto_id === proyectoFiltro || b.proyecto_id?.replace('PROYECTO#','') === proyectoFiltro).length})`,
-            children: (
+            children: isMobile ? (
+              <div>
+                {loading && <div style={{ textAlign: 'center', padding: 40, color: '#aaa' }}>Cargando...</div>}
+                {!loading && bloqueos.length === 0 && <div style={{ textAlign: 'center', padding: 40, color: '#aaa' }}>No hay bloqueos activos</div>}
+                {bloqueos.filter(b => !proyectoFiltro || b.proyecto_id === proyectoFiltro || b.proyecto_id?.replace('PROYECTO#','') === proyectoFiltro).map(b => {
+                  const tiempoOk = b.tiempo_restante ?? 0;
+                  const color = tiempoOk <= 0 ? '#ff4d4f' : tiempoOk < 5 * 3600 ? '#faad14' : '#52c41a';
+                  const menuItems = [
+                    ...(!b.cliente_cedula ? [{ key: 'asignar', icon: <UserAddOutlined />, label: 'Asignar cliente', onClick: () => abrirAsignarCliente(b) }] : []),
+                    { key: 'extender', icon: <FieldTimeOutlined />, label: 'Extender', onClick: () => abrirExtender(b) },
+                    { key: 'liberar', icon: <UnlockOutlined />, label: 'Liberar', danger: true, onClick: () => Modal.confirm({ title: '¿Liberar este bloqueo?', content: 'La unidad volverá a estar disponible.', okText: 'Liberar', cancelText: 'Cancelar', okButtonProps: { danger: true }, onOk: () => handleLiberar(b) }) },
+                  ];
+                  return (
+                    <div key={b.unidad_id} style={{ background: '#fff', borderRadius: 12, border: '1px solid #f0f0f0', boxShadow: '0 2px 8px rgba(0,0,0,0.05)', marginBottom: 10, padding: '14px 16px' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
+                        <div>
+                          <Text strong style={{ fontSize: 15 }}>{[b.torre_nombre, b.id_unidad || b.unidad_id].filter(Boolean).join(' · ')}</Text>
+                          <div><Text type="secondary" style={{ fontSize: 12 }}>{proyectoNombre(b.proyecto_id)}</Text></div>
+                        </div>
+                        <Dropdown menu={{ items: menuItems }} trigger={['click']} placement="bottomRight">
+                          <Button size="small" icon={<MoreOutlined />} />
+                        </Dropdown>
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                          {b.cliente_cedula ? <Tag color="green">Con cliente</Tag> : <Tag color="orange">Sin cliente</Tag>}
+                        </div>
+                        <Text style={{ fontSize: 13, color, fontWeight: 600 }}>
+                          <ClockCircleOutlined style={{ marginRight: 4 }} />{formatTiempo(tiempoOk)}
+                        </Text>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
               <Table
                 dataSource={bloqueos.filter(b => !proyectoFiltro || b.proyecto_id === proyectoFiltro || b.proyecto_id?.replace('PROYECTO#','') === proyectoFiltro)}
                 columns={columns}
@@ -355,6 +346,7 @@ const BloqueosPage = () => {
                 loading={loading}
                 pagination={{ pageSize: 20 }}
                 locale={{ emptyText: 'No hay bloqueos activos' }}
+                scroll={{ x: true }}
               />
             ),
           },

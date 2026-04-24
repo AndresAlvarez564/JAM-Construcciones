@@ -1,7 +1,7 @@
 import json
 import boto3
 import os
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from boto3.dynamodb.conditions import Key, Attr
 from utils.response import ok, created, bad_request, not_found, conflict
 from utils.auth import get_sub, get_nombre
@@ -14,6 +14,10 @@ clientes_table = dynamodb.Table(os.environ['CLIENTES_TABLE'])
 procesos_table = dynamodb.Table(os.environ['PROCESOS_TABLE'])
 inventario_table = dynamodb.Table(os.environ['INVENTARIO_TABLE'])
 SQS_URL = os.environ['SQS_URL']
+SCHEDULER_ROLE_ARN = os.environ.get('SCHEDULER_ROLE_ARN', '')
+CRM_LAMBDA_ARN = os.environ.get('CRM_LAMBDA_ARN', '')
+
+DIAS_SEPARACION = 30
 
 TRANSICIONES = {
     'captacion':  ['reserva', 'desvinculado'],
@@ -25,6 +29,53 @@ TRANSICIONES = {
 
 def _now():
     return datetime.now(timezone.utc).isoformat()
+
+
+def _schedule_name_separacion(cedula, unidad_id):
+    safe_cedula = cedula.replace('/', '-').replace('#', '-').replace(' ', '-')
+    safe_unidad = unidad_id.replace('/', '-').replace('#', '-')
+    return f"sep-{safe_cedula}-{safe_unidad}"[:64]
+
+
+def _crear_alerta_separacion(cedula, inmobiliaria_id, proyecto_id, unidad_id, unidad_nombre):
+    """Crea un EventBridge Scheduler que dispara a los 30 días si no se avanzó a inicial."""
+    if not SCHEDULER_ROLE_ARN or not CRM_LAMBDA_ARN:
+        return
+    fecha_alerta = datetime.now(timezone.utc) + timedelta(days=DIAS_SEPARACION)
+    schedule_expr = f"at({fecha_alerta.strftime('%Y-%m-%dT%H:%M:%S')})"
+    nombre = _schedule_name_separacion(cedula, unidad_id)
+    try:
+        scheduler_client.create_schedule(
+            Name=nombre,
+            ScheduleExpression=schedule_expr,
+            ScheduleExpressionTimezone='UTC',
+            FlexibleTimeWindow={'Mode': 'OFF'},
+            Target={
+                'Arn': CRM_LAMBDA_ARN,
+                'RoleArn': SCHEDULER_ROLE_ARN,
+                'Input': json.dumps({
+                    'source': 'scheduler',
+                    'tipo': 'alerta_separacion_vencida',
+                    'cedula': cedula,
+                    'inmobiliaria_id': inmobiliaria_id,
+                    'proyecto_id': proyecto_id,
+                    'unidad_id': unidad_id,
+                    'unidad_nombre': unidad_nombre,
+                }),
+            },
+            ActionAfterCompletion='DELETE',
+        )
+    except Exception:
+        pass  # No crítico si falla la creación del schedule
+
+
+def _cancelar_alerta_separacion(cedula, unidad_id):
+    """Cancela el scheduler de alerta de separación si existe."""
+    nombre = _schedule_name_separacion(cedula, unidad_id)
+    try:
+        scheduler_client.delete_schedule(Name=nombre)
+    except Exception:
+        pass  # Ya expiró o no existe
 
 
 # ─── Procesos ────────────────────────────────────────────────────────────────
@@ -219,9 +270,30 @@ def cambiar_estatus(event, cedula, proyecto_id, unidad_id):
     if nuevo_estatus == 'reserva':
         sched_eliminar_bloqueo(unidad_id)  # cancela liberación automática del bloqueo
         _actualizar_unidad(proyecto_id, unidad_id, 'no_disponible')
+    elif nuevo_estatus == 'separacion':
+        # Guardar fecha_separacion y crear alerta a 30 días
+        procesos_table.update_item(
+            Key={'pk': pk, 'sk': sk},
+            UpdateExpression='SET fecha_separacion = :fs',
+            ExpressionAttributeValues={':fs': ahora},
+        )
+        _crear_alerta_separacion(
+            cedula, inmobiliaria_id, proyecto_id, unidad_id,
+            proceso.get('unidad_nombre', unidad_id)
+        )
     elif nuevo_estatus == 'inicial':
+        # Pago confirmado manualmente — cancelar alerta y marcar
+        _cancelar_alerta_separacion(cedula, unidad_id)
+        procesos_table.update_item(
+            Key={'pk': pk, 'sk': sk},
+            UpdateExpression='SET pago_confirmado = :v',
+            ExpressionAttributeValues={':v': True},
+        )
         _actualizar_unidad(proyecto_id, unidad_id, 'vendida')
     elif nuevo_estatus == 'desvinculado':
+        # Si venía de separacion, cancelar la alerta también
+        if estatus_actual == 'separacion':
+            _cancelar_alerta_separacion(cedula, unidad_id)
         _actualizar_unidad(proyecto_id, unidad_id, 'disponible')
 
     # Publicar a SQS para TK-08
@@ -266,6 +338,47 @@ def ver_historial(event, cedula, proyecto_id, unidad_id):
 
     historial = list(reversed(proceso.get('historial', [])))
     return ok(historial)
+
+
+def manejar_alerta_separacion(event):
+    """Invocado por EventBridge Scheduler cuando vencen los 30 días de separación sin pago."""
+    cedula = event.get('cedula')
+    inmobiliaria_id = event.get('inmobiliaria_id')
+    proyecto_id = event.get('proyecto_id')
+    unidad_id = event.get('unidad_id')
+    unidad_nombre = event.get('unidad_nombre', unidad_id)
+
+    if not all([cedula, inmobiliaria_id, proyecto_id, unidad_id]):
+        return
+
+    pk = f'PROCESO#{cedula}#{inmobiliaria_id}'
+    sk = f'UNIDAD#{unidad_id}'
+    proceso = procesos_table.get_item(Key={'pk': pk, 'sk': sk}).get('Item')
+
+    # Solo notificar si sigue en separacion y no se confirmó pago
+    if not proceso or proceso.get('estado') != 'separacion' or proceso.get('pago_confirmado'):
+        return
+
+    # Marcar alerta en el proceso
+    procesos_table.update_item(
+        Key={'pk': pk, 'sk': sk},
+        UpdateExpression='SET alerta_separacion_vencida = :v',
+        ExpressionAttributeValues={':v': True},
+    )
+
+    # Enviar notificación al admin por SQS
+    sqs.send_message(
+        QueueUrl=SQS_URL,
+        MessageBody=json.dumps({
+            'tipo': 'alerta_separacion_vencida',
+            'cedula': cedula,
+            'proyecto_id': proyecto_id,
+            'inmobiliaria_id': inmobiliaria_id,
+            'unidad_id': unidad_id,
+            'unidad_nombre': unidad_nombre,
+            'timestamp': _now(),
+        }, ensure_ascii=False),
+    )
 
 
 def _actualizar_unidad(proyecto_id, unidad_id, nuevo_estado):

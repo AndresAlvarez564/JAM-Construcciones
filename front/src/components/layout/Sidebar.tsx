@@ -1,7 +1,7 @@
 import { Avatar, Typography, Tooltip, message } from 'antd';
 import {
   AppstoreOutlined, TeamOutlined, DashboardOutlined,
-  BarChartOutlined, BankOutlined, UserOutlined, PoweroffOutlined,
+  BankOutlined, UserOutlined, PoweroffOutlined,
   LockOutlined, LinkOutlined,
 } from '@ant-design/icons';
 import { useNavigate, useLocation } from 'react-router-dom';
@@ -46,7 +46,6 @@ const Sidebar = ({ onSelect }: Props) => {
         { key: '/dashboard', icon: <DashboardOutlined />, label: 'Dashboard' },
         { key: '/inventario', icon: <AppstoreOutlined />, label: 'Proyectos' },
         { key: '/clientes', icon: <TeamOutlined />, label: 'Clientes' },
-        ...(isInterno ? [{ key: '/reportes', icon: <BarChartOutlined />, label: 'Reportes' }] : []),
       ],
     },
     ...(isAdmin ? [{

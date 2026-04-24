@@ -50,10 +50,20 @@ export interface Unidad {
   id_unidad: string;
   etapa_id: string;
   metraje: number;
+  metraje_terraza?: number;
+  metraje_patio?: number;
   precio: number;
+  precio_reserva?: number;
+  precio_separacion?: number;
+  precio_inicial?: number;
+  cuota_monto?: number;
+  cuota_meses?: number;
+  contra_entrega?: number;
   tipo?: string;
   manzana?: string;
   piso?: string;
+  parqueos?: number;
+  comentario?: string;
   estado: string;
   bloqueado_por?: string;
   cliente_cedula?: string;
@@ -117,6 +127,9 @@ export interface Proceso {
   historial: HistorialProcesoEntry[];
   fecha_inicio: string;
   actualizado_en: string;
+  fecha_separacion?: string;
+  pago_confirmado?: boolean;
+  alerta_separacion_vencida?: boolean;
 }
 
 export interface Cliente {

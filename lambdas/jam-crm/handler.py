@@ -5,6 +5,11 @@ from routes import analytics as analytics_routes
 
 
 def handler(event, context):
+    # Invocación desde EventBridge Scheduler (alerta separación vencida)
+    if event.get('source') == 'scheduler' and event.get('tipo') == 'alerta_separacion_vencida':
+        estatus_routes.manejar_alerta_separacion(event)
+        return {'statusCode': 200}
+
     method = event.get('httpMethod')
     path = event.get('path', '')
     path_params = event.get('pathParameters') or {}
@@ -23,9 +28,10 @@ def handler(event, context):
     if method == 'GET' and cedula and path.endswith('/procesos'):
         return estatus_routes.listar_procesos(event, cedula)
 
-    # POST /admin/clientes/{cedula}/procesos
-    if method == 'POST' and cedula and path.endswith('/procesos'):
-        return estatus_routes.crear_proceso_admin(event, cedula)
+    # POST /admin/clientes/{cedula}/procesos — DESHABILITADO
+    # La asignación de unidades se hace exclusivamente desde el flujo de bloqueos
+    # if method == 'POST' and cedula and path.endswith('/procesos'):
+    #     return estatus_routes.crear_proceso_admin(event, cedula)
 
     if not cedula or not proyecto_id or not unidad_id:
         return bad_request('cedula, proyecto_id y unidad_id son requeridos')

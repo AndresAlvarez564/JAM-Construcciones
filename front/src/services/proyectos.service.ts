@@ -1,7 +1,6 @@
 import { apiGet, apiPost, apiPut, apiDelete } from './api';
 import type { Proyecto, Unidad, Etapa } from '../types';
 
-// Proyectos
 export const getProyectos = (): Promise<Proyecto[]> =>
   apiGet<Proyecto[]>('/proyectos');
 

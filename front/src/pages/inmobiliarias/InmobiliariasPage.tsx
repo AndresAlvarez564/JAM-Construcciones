@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import {
   Button, Modal, Form, Input, Tag, Space, Popconfirm,
-  Typography, Drawer, Tooltip, Select, message, Row, Col, Avatar, Badge,
+  Typography, Tooltip, Select, message, Row, Col, Avatar, Badge,
 } from 'antd';
 import {
   PlusOutlined, EditOutlined, StopOutlined, CheckOutlined,
@@ -102,6 +102,7 @@ const InmobiliariasPage = () => {
 
   const abrirUsuarios = async (inmo: Inmobiliaria) => {
     setInmoSeleccionada(inmo); setDrawerOpen(true); setLoadingUsuarios(true);
+
     try {
       setUsuarios(await getUsuariosInmobiliaria(inmo.pk));
     } catch { message.error('Error al cargar usuarios'); }
@@ -305,93 +306,96 @@ const InmobiliariasPage = () => {
         </Form>
       </Modal>
 
-      {/* Drawer usuarios */}
-      <Drawer
+      {/* Modal usuarios */}
+      <Modal
         open={drawerOpen}
-        onClose={() => { setDrawerOpen(false); setInmoSeleccionada(null); }}
-        width={420}
+        onCancel={() => { setDrawerOpen(false); setInmoSeleccionada(null); }}
+        footer={null}
+        width={560}
         title={null}
         styles={{ body: { padding: 0 } }}
       >
-        {/* Header del drawer */}
         {inmoSeleccionada && (
-          <div style={{ padding: '24px 24px 16px', borderBottom: '1px solid #f0f0f0' }}>
-            <div style={{ height: 4, background: color, borderRadius: 2, marginBottom: 16 }} />
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
-                <Avatar size={48} style={{ background: `${color}20`, color, fontWeight: 700, fontSize: 20 }}>
-                  {inmoSeleccionada.nombre.charAt(0).toUpperCase()}
-                </Avatar>
-                <div>
-                  <Text strong style={{ fontSize: 16, display: 'block' }}>{inmoSeleccionada.nombre}</Text>
-                  <Text type="secondary" style={{ fontSize: 12 }}>{usuarios.length} usuario{usuarios.length !== 1 ? 's' : ''}</Text>
-                </div>
-              </div>
-              <Button type="primary" size="small" icon={<PlusOutlined />} onClick={() => setModalUsuario(true)}>
-                Nuevo usuario
-              </Button>
-            </div>
-            {inmoSeleccionada.correos?.length > 0 && (
-              <div style={{ marginTop: 12, display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
-                <MailOutlined style={{ color: '#aaa', fontSize: 12 }} />
-                {inmoSeleccionada.correos.map(c => (
-                  <Tag key={c} style={{ margin: 0, fontSize: 11 }}>{c}</Tag>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Lista de usuarios */}
-        <div style={{ padding: '12px 24px' }}>
-          {loadingUsuarios ? (
-            <div style={{ textAlign: 'center', padding: 40 }}>
-              <Text type="secondary">Cargando usuarios...</Text>
-            </div>
-          ) : usuarios.length === 0 ? (
-            <div style={{ textAlign: 'center', padding: 40 }}>
-              <UserOutlined style={{ fontSize: 36, color: '#d9d9d9', marginBottom: 8 }} />
-              <div><Text type="secondary">No hay usuarios registrados</Text></div>
-            </div>
-          ) : (
-            usuarios.map(u => (
-              <div key={u.pk} style={{
-                display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                padding: '12px 0', borderBottom: '1px solid #f5f5f5',
-              }}>
-                <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-                  <Avatar size={36} style={{ background: u.activo ? `${color}20` : '#f5f5f5', color: u.activo ? color : '#aaa', fontWeight: 600 }}>
-                    {(u.nombre || u.cognito_username).charAt(0).toUpperCase()}
+          <>
+            {/* Header */}
+            <div style={{ padding: '24px 24px 16px', borderBottom: '1px solid #f0f0f0' }}>
+              <div style={{ height: 4, background: color, borderRadius: 2, marginBottom: 16 }} />
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+                  <Avatar size={48} style={{ background: `${color}20`, color, fontWeight: 700, fontSize: 20 }}>
+                    {inmoSeleccionada.nombre.charAt(0).toUpperCase()}
                   </Avatar>
                   <div>
-                    <Text strong style={{ fontSize: 13, display: 'block' }}>{u.nombre || u.cognito_username}</Text>
-                    <Text type="secondary" style={{ fontSize: 11 }}>{u.cognito_username}</Text>
+                    <Text strong style={{ fontSize: 16, display: 'block' }}>{inmoSeleccionada.nombre}</Text>
+                    <Text type="secondary" style={{ fontSize: 12 }}>{usuarios.length} usuario{usuarios.length !== 1 ? 's' : ''}</Text>
                   </div>
                 </div>
-                <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                  <Badge status={u.activo ? 'success' : 'error'} />
-                  <Popconfirm
-                    title={u.activo ? '¿Deshabilitar?' : '¿Habilitar?'}
-                    okText="Sí" cancelText="No"
-                    onConfirm={() => handleToggleUsuario(u)}
-                  >
-                    <Tooltip title={u.activo ? 'Deshabilitar' : 'Habilitar'}>
-                      <Button size="small" type="text" danger={u.activo}
-                        icon={u.activo ? <StopOutlined /> : <CheckOutlined />} />
-                    </Tooltip>
-                  </Popconfirm>
-                  <Popconfirm title="¿Eliminar usuario?" okText="Sí" cancelText="No" okButtonProps={{ danger: true }}
-                    onConfirm={() => handleEliminarUsuario(u)}>
-                    <Tooltip title="Eliminar">
-                      <Button size="small" type="text" danger icon={<DeleteOutlined />} />
-                    </Tooltip>
-                  </Popconfirm>
-                </div>
+                <Button type="primary" size="small" icon={<PlusOutlined />} onClick={() => setModalUsuario(true)}>
+                  Nuevo usuario
+                </Button>
               </div>
-            ))
-          )}
-        </div>
-      </Drawer>
+              {inmoSeleccionada.correos?.length > 0 && (
+                <div style={{ marginTop: 12, display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+                  <MailOutlined style={{ color: '#aaa', fontSize: 12 }} />
+                  {inmoSeleccionada.correos.map(c => (
+                    <Tag key={c} style={{ margin: 0, fontSize: 11 }}>{c}</Tag>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Lista de usuarios */}
+            <div style={{ padding: '12px 24px 24px', maxHeight: 420, overflowY: 'auto' }}>
+              {loadingUsuarios ? (
+                <div style={{ textAlign: 'center', padding: 40 }}>
+                  <Text type="secondary">Cargando usuarios...</Text>
+                </div>
+              ) : usuarios.length === 0 ? (
+                <div style={{ textAlign: 'center', padding: 40 }}>
+                  <UserOutlined style={{ fontSize: 36, color: '#d9d9d9', marginBottom: 8 }} />
+                  <div><Text type="secondary">No hay usuarios registrados</Text></div>
+                </div>
+              ) : (
+                usuarios.map(u => (
+                  <div key={u.pk} style={{
+                    display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                    padding: '12px 0', borderBottom: '1px solid #f5f5f5',
+                  }}>
+                    <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+                      <Avatar size={36} style={{ background: u.activo ? `${color}20` : '#f5f5f5', color: u.activo ? color : '#aaa', fontWeight: 600 }}>
+                        {(u.nombre || u.cognito_username).charAt(0).toUpperCase()}
+                      </Avatar>
+                      <div>
+                        <Text strong style={{ fontSize: 13, display: 'block' }}>{u.nombre || u.cognito_username}</Text>
+                        <Text type="secondary" style={{ fontSize: 11 }}>{u.cognito_username}</Text>
+                      </div>
+                    </div>
+                    <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                      <Badge status={u.activo ? 'success' : 'error'} />
+                      <Popconfirm
+                        title={u.activo ? '¿Deshabilitar?' : '¿Habilitar?'}
+                        okText="Sí" cancelText="No"
+                        onConfirm={() => handleToggleUsuario(u)}
+                      >
+                        <Tooltip title={u.activo ? 'Deshabilitar' : 'Habilitar'}>
+                          <Button size="small" type="text" danger={u.activo}
+                            icon={u.activo ? <StopOutlined /> : <CheckOutlined />} />
+                        </Tooltip>
+                      </Popconfirm>
+                      <Popconfirm title="¿Eliminar usuario?" okText="Sí" cancelText="No" okButtonProps={{ danger: true }}
+                        onConfirm={() => handleEliminarUsuario(u)}>
+                        <Tooltip title="Eliminar">
+                          <Button size="small" type="text" danger icon={<DeleteOutlined />} />
+                        </Tooltip>
+                      </Popconfirm>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </>
+        )}
+      </Modal>
 
       {/* Modal nuevo usuario */}
       <Modal

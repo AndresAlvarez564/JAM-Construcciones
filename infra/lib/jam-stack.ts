@@ -354,6 +354,8 @@ export class JamStack extends cdk.Stack {
 
     // ─── LAMBDA jam-crm ──────────────────────────────────────────────────────
 
+    const crmLambdaArn = `arn:aws:lambda:${this.region}:${this.account}:function:jam-crm`;
+
     const crmLambda = new lambda.Function(this, 'JamCrmLambda', {
       functionName: 'jam-crm',
       runtime: lambda.Runtime.PYTHON_3_12,
@@ -365,6 +367,8 @@ export class JamStack extends cdk.Stack {
         PROCESOS_TABLE: procesosTable.tableName,
         INVENTARIO_TABLE: inventarioTable.tableName,
         SQS_URL: notificacionesQueue.queueUrl,
+        SCHEDULER_ROLE_ARN: schedulerRole.roleArn,
+        CRM_LAMBDA_ARN: crmLambdaArn,
       },
     });
 
@@ -374,8 +378,18 @@ export class JamStack extends cdk.Stack {
     notificacionesQueue.grantSendMessages(crmLambda);
 
     crmLambda.addToRolePolicy(new iam.PolicyStatement({
-      actions: ['scheduler:DeleteSchedule'],
+      actions: ['scheduler:CreateSchedule', 'scheduler:DeleteSchedule'],
       resources: ['*'],
+    }));
+
+    crmLambda.addToRolePolicy(new iam.PolicyStatement({
+      actions: ['iam:PassRole'],
+      resources: [schedulerRole.roleArn],
+    }));
+
+    schedulerRole.addToPolicy(new iam.PolicyStatement({
+      actions: ['lambda:InvokeFunction'],
+      resources: [crmLambdaArn],
     }));
 
     // ─── API GATEWAY ────────────────────────────────────────────────────────

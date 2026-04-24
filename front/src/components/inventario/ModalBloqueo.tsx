@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { Modal, Form, Input, Space, Typography, Tag, Divider, Row, Col } from 'antd';
 import { DatePicker } from 'antd';
 import { LockOutlined, UserOutlined, CheckCircleFilled } from '@ant-design/icons';
@@ -19,6 +20,20 @@ interface Props {
 
 const ModalBloqueo = ({ open, unidad, clienteEncontrado, buscandoCliente, guardando, onCancel, onBuscar, onBloquear }: Props) => {
   const [form] = Form.useForm();
+
+  // Cuando se encuentra un cliente, rellenar el form automáticamente
+  useEffect(() => {
+    if (clienteEncontrado) {
+      form.setFieldsValue({
+        cedula:           clienteEncontrado.cedula,
+        nombres:          clienteEncontrado.nombres,
+        apellidos:        clienteEncontrado.apellidos,
+        correo:           clienteEncontrado.correo ?? '',
+        telefono:         clienteEncontrado.telefono ?? '',
+        fecha_nacimiento: clienteEncontrado.fecha_nacimiento ? dayjs(clienteEncontrado.fecha_nacimiento) : undefined,
+      });
+    }
+  }, [clienteEncontrado, form]);
 
   const handleCancel = () => { form.resetFields(); onCancel(); };
 
