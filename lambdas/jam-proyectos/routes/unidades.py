@@ -46,8 +46,9 @@ def listar(proyecto_id, event, rol):
     if qs.get('piso'):
         items = [i for i in items if str(i.get('piso', '')) == qs['piso']]
 
-    # Ocultar campos sensibles a inmobiliaria
+    # Filtrar y ocultar campos para inmobiliaria
     if rol == 'inmobiliaria':
+        items = [i for i in items if i.get('estado') in ('disponible', 'bloqueada')]
         for item in items:
             item.pop('bloqueado_por', None)
             item.pop('cliente_id', None)

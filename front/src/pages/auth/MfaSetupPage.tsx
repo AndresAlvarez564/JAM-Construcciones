@@ -37,11 +37,10 @@ const MfaSetupPage = () => {
     setLoading(true);
     try {
       await completeMfaSetup(values.code);
-      await refetch();
-      navigate('/dashboard');
+      // Recargar sesión completa para que AuthContext detecte MFA configurado
+      window.location.href = '/dashboard';
     } catch {
       setError('Código incorrecto. Verifica que el autenticador esté sincronizado.');
-    } finally {
       setLoading(false);
     }
   };

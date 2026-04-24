@@ -3,12 +3,14 @@ import {
   Table, Button, Modal, Form, Input, Tag, Space,
   Popconfirm, Typography, Select, Tooltip, message, Grid, Dropdown,
 } from 'antd';
-import { PlusOutlined, EditOutlined, StopOutlined, CheckOutlined, DeleteOutlined, ReloadOutlined, MoreOutlined } from '@ant-design/icons';
+import { PlusOutlined, EditOutlined, StopOutlined, CheckOutlined, DeleteOutlined, ReloadOutlined, MoreOutlined, QrcodeOutlined } from '@ant-design/icons';
+import QRCode from 'qrcode';
 import {
   getUsuariosSistema, crearUsuarioSistema, actualizarUsuarioSistema,
   deshabilitarUsuarioSistema, habilitarUsuarioSistema, eliminarUsuarioSistema,
   type UsuarioSistema,
 } from '../../services/sistema.service';
+import { useAuthContext } from '../../context/AuthContext';
 import type { RolInterno } from '../../types';
 
 const { Title } = Typography;
@@ -29,6 +31,7 @@ const ROL_COLORS: Record<RolInterno, string> = {
 type ModalMode = 'crear' | 'editar';
 
 const UsuariosSistemaPage = () => {
+  const { usuario: usuarioActual } = useAuthContext();
   const [usuarios, setUsuarios] = useState<UsuarioSistema[]>([]);
   const [loading, setLoading] = useState(false);
   const [modal, setModal] = useState(false);
@@ -37,6 +40,12 @@ const UsuariosSistemaPage = () => {
   const [form] = Form.useForm();
   const { md } = useBreakpoint();
   const isMobile = !md;
+
+  // Modal QR para MFA setup del nuevo usuario
+  const [mfaModal, setMfaModal] = useState(false);
+  const [mfaQrUrl, setMfaQrUrl] = useState('');
+  const [mfaSecret, setMfaSecret] = useState('');
+  const [mfaUsername, setMfaUsername] = useState('');
 
   useEffect(() => { cargar(); }, []);
 
@@ -64,14 +73,26 @@ const UsuariosSistemaPage = () => {
   const handleGuardar = async (values: any) => {
     try {
       if (modo === 'crear') {
-        await crearUsuarioSistema(values);
-        message.success('Usuario creado');
+        const res = await crearUsuarioSistema(values);
+        setModal(false);
+        await cargar();
+        // Si el backend devuelve mfa_secret, mostrar QR al admin
+        if (res?.mfa_secret) {
+          const uri = `otpauth://totp/JAM:${encodeURIComponent(values.username)}?secret=${res.mfa_secret}&issuer=JAM%20Construcciones`;
+          const qr = await QRCode.toDataURL(uri);
+          setMfaQrUrl(qr);
+          setMfaSecret(res.mfa_secret);
+          setMfaUsername(values.username);
+          setMfaModal(true);
+        } else {
+          message.success('Usuario creado');
+        }
       } else if (editando) {
         await actualizarUsuarioSistema(editando.pk, { nombre: values.nombre, rol: values.rol });
         message.success('Usuario actualizado');
+        setModal(false);
+        await cargar();
       }
-      setModal(false);
-      await cargar();
     } catch (err: any) {
       try {
         const body = await err?.response?.body?.json?.();
@@ -81,6 +102,8 @@ const UsuariosSistemaPage = () => {
       }
     }
   };
+
+  const esSelf = (u: UsuarioSistema) => u.pk === `USUARIO#${usuarioActual?.sub}`;
 
   const handleToggle = async (u: UsuarioSistema) => {
     try {
@@ -121,17 +144,21 @@ const UsuariosSistemaPage = () => {
     {
       title: '', key: 'acciones', width: isMobile ? 48 : 130,
       render: (_: any, u: UsuarioSistema) => {
+        const self = esSelf(u);
         if (isMobile) {
           const items = [
             { key: 'editar', icon: <EditOutlined />, label: 'Editar', onClick: () => abrirEditar(u) },
             {
               key: 'toggle', icon: u.activo ? <StopOutlined /> : <CheckOutlined />,
               label: u.activo ? 'Deshabilitar' : 'Habilitar', danger: u.activo,
-              onClick: () => handleToggle(u),
+              disabled: self,
+              onClick: () => !self && handleToggle(u),
             },
             {
               key: 'eliminar', icon: <DeleteOutlined />, label: 'Eliminar', danger: true,
+              disabled: self,
               onClick: () => {
+                if (self) return;
                 Modal.confirm({
                   title: '¿Eliminar usuario?', okText: 'Eliminar',
                   cancelText: 'Cancelar', okButtonProps: { danger: true },
@@ -147,14 +174,27 @@ const UsuariosSistemaPage = () => {
             <Tooltip title="Editar">
               <Button size="small" icon={<EditOutlined />} onClick={() => abrirEditar(u)} />
             </Tooltip>
-            <Popconfirm title={u.activo ? 'Deshabilitar usuario?' : 'Habilitar usuario?'} okText="Si" cancelText="No" onConfirm={() => handleToggle(u)}>
-              <Tooltip title={u.activo ? 'Deshabilitar' : 'Habilitar'}>
-                <Button size="small" danger={u.activo} icon={u.activo ? <StopOutlined /> : <CheckOutlined />} />
-              </Tooltip>
-            </Popconfirm>
-            <Popconfirm title="Eliminar usuario permanentemente?" okText="Si" cancelText="No" okButtonProps={{ danger: true }} onConfirm={() => handleEliminar(u)}>
-              <Tooltip title="Eliminar"><Button size="small" danger icon={<DeleteOutlined />} /></Tooltip>
-            </Popconfirm>
+            <Tooltip title={self ? 'No puedes modificar tu propio estado' : (u.activo ? 'Deshabilitar' : 'Habilitar')}>
+              <Popconfirm
+                title={u.activo ? 'Deshabilitar usuario?' : 'Habilitar usuario?'}
+                okText="Si" cancelText="No"
+                onConfirm={() => handleToggle(u)}
+                disabled={self}
+              >
+                <Button size="small" danger={u.activo} disabled={self} icon={u.activo ? <StopOutlined /> : <CheckOutlined />} />
+              </Popconfirm>
+            </Tooltip>
+            <Tooltip title={self ? 'No puedes eliminarte a ti mismo' : 'Eliminar'}>
+              <Popconfirm
+                title="Eliminar usuario permanentemente?"
+                okText="Si" cancelText="No"
+                okButtonProps={{ danger: true }}
+                onConfirm={() => handleEliminar(u)}
+                disabled={self}
+              >
+                <Button size="small" danger disabled={self} icon={<DeleteOutlined />} />
+              </Popconfirm>
+            </Tooltip>
           </Space>
         );
       },
@@ -199,7 +239,7 @@ const UsuariosSistemaPage = () => {
                 <Input placeholder="Sin espacios ni correo" />
               </Form.Item>
               <Form.Item
-                name="password" label="Contrasena temporal"
+                name="password" label="Contraseña"
                 rules={[{ required: true, message: 'Requerido' }, { min: 8, message: 'Minimo 8 caracteres' }]}
               >
                 <Input.Password placeholder="Minimo 8 caracteres, 1 mayuscula, 1 numero" />
@@ -213,13 +253,41 @@ const UsuariosSistemaPage = () => {
             </>
           )}
           <Form.Item name="rol" label="Rol" rules={[{ required: true, message: 'Requerido' }]}>
-            <Select placeholder="Selecciona un rol">
+            <Select placeholder="Selecciona un rol" disabled={modo === 'editar' && editando?.pk === `USUARIO#${usuarioActual?.sub}`}>
               <Select.Option value="admin">Admin</Select.Option>
               <Select.Option value="coordinador">Coordinador</Select.Option>
               <Select.Option value="supervisor">Supervisor</Select.Option>
             </Select>
           </Form.Item>
         </Form>
+      </Modal>
+
+      {/* Modal QR — se muestra al admin tras crear un usuario interno */}
+      <Modal
+        title={<span><QrcodeOutlined /> Configuración MFA requerida</span>}
+        open={mfaModal}
+        onOk={() => setMfaModal(false)}
+        onCancel={() => setMfaModal(false)}
+        okText="Entendido"
+        cancelButtonProps={{ style: { display: 'none' } }}
+        width={420}
+      >
+        <p style={{ marginBottom: 8 }}>
+          El usuario <strong>{mfaUsername}</strong> debe escanear este QR con Google Authenticator o Authy
+          antes de su primer login.
+        </p>
+        {mfaQrUrl && (
+          <div style={{ display: 'flex', justifyContent: 'center', margin: '16px 0' }}>
+            <img src={mfaQrUrl} alt="QR MFA" style={{ width: 180, height: 180 }} />
+          </div>
+        )}
+        <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 8, padding: '10px 14px' }}>
+          <div style={{ fontSize: 11, color: '#16a34a', fontWeight: 600, marginBottom: 4, letterSpacing: 1 }}>CLAVE MANUAL</div>
+          <code style={{ wordBreak: 'break-all', fontSize: 13 }}>{mfaSecret}</code>
+        </div>
+        <p style={{ marginTop: 12, color: '#6b7280', fontSize: 13 }}>
+          Una vez configurado el autenticador, el usuario podrá hacer login normalmente.
+        </p>
       </Modal>
     </div>
   );

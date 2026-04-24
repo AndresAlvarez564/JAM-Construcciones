@@ -62,6 +62,22 @@ def crear(event):
             UserPoolId=USER_POOL_ID, Username=username, GroupName=rol
         )
 
+        # Iniciar sesión interna para obtener la sesión del challenge MFA_SETUP
+        # y generar el secret TOTP que el usuario deberá escanear
+        USER_POOL_CLIENT_ID = os.environ['USER_POOL_CLIENT_ID']
+        auth_result = cognito.initiate_auth(
+            AuthFlow='USER_PASSWORD_AUTH',
+            AuthParameters={'USERNAME': username, 'PASSWORD': password},
+            ClientId=USER_POOL_CLIENT_ID,
+        )
+
+        mfa_secret = None
+        if auth_result.get('ChallengeName') == 'MFA_SETUP':
+            totp_result = cognito.associate_software_token(
+                Session=auth_result['Session']
+            )
+            mfa_secret = totp_result['SecretCode']
+
         table = dynamodb.Table(USUARIOS_TABLE)
         item = {
             'pk': f'USUARIO#{sub}',
@@ -75,7 +91,12 @@ def crear(event):
             'creado_en': now(),
         }
         table.put_item(Item=item)
-        return created({'message': 'Usuario creado', 'sub': sub, 'username': username, 'rol': rol})
+
+        response = {'message': 'Usuario creado', 'sub': sub, 'username': username, 'rol': rol}
+        if mfa_secret:
+            response['mfa_secret'] = mfa_secret
+
+        return created(response)
 
     except ClientError as e:
         code = e.response['Error']['Code']

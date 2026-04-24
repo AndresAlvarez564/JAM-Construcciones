@@ -1,4 +1,4 @@
-from utils.auth import require_admin, get_rol
+from utils.auth import require_admin, get_rol, get_claims
 from utils.response import forbidden, not_found, bad_request
 from routes import bloqueos, admin_bloqueos, scheduler_handler, historial
 
@@ -17,17 +17,22 @@ def handler(event, context):
 
     is_admin = '/admin/' in path or path.startswith('/admin/')
 
+    # Verificar que hay sesión válida para todas las rutas (excepto scheduler)
+    claims = get_claims(event)
+    if not claims.get('sub'):
+        return forbidden()
+
     # ===== INMOBILIARIA =====
 
     if method == 'POST' and path == '/bloqueos':
         return bloqueos.bloquear(event)
 
+    if method == 'GET' and path == '/bloqueos/activos':
+        return bloqueos.listar_activos(event)
+
     # ===== ADMIN: guard =====
     if is_admin and not require_admin(event):
         return forbidden()
-
-    if method == 'GET' and path == '/bloqueos/activos':
-        return bloqueos.listar_activos(event)
 
     if method == 'GET' and path == '/admin/bloqueos/historial':
         return historial.listar(event)

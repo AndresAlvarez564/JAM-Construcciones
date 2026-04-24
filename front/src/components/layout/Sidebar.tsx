@@ -39,13 +39,16 @@ const Sidebar = ({ onSelect }: Props) => {
 
   const isAdmin = rol === 'admin';
   const isInterno = rol === 'admin' || rol === 'coordinador' || rol === 'supervisor';
+  const isCoordinador = rol === 'coordinador';
+  const isSupervisor = rol === 'supervisor';
 
   const sections: NavSection[] = [
     {
       items: [
         { key: '/dashboard', icon: <DashboardOutlined />, label: 'Dashboard' },
         { key: '/inventario', icon: <AppstoreOutlined />, label: 'Proyectos' },
-        { key: '/clientes', icon: <TeamOutlined />, label: 'Clientes' },
+        ...(isInterno || rol === 'inmobiliaria' ? [{ key: '/clientes', icon: <TeamOutlined />, label: 'Clientes' }] : []),
+        ...(isInterno ? [{ key: '/reportes', icon: <LinkOutlined />, label: 'Reportes' }] : []),
       ],
     },
     ...(isAdmin ? [{

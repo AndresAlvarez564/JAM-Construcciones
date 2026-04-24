@@ -25,7 +25,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         return;
       }
       const data = await getMe();
-      setUsuario(data);
+      const username = session.tokens.idToken.payload?.['cognito:username'] as string | undefined;
+      setUsuario({ ...data, username });
     } catch {
       setUsuario(null);
     } finally {

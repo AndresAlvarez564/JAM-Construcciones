@@ -13,6 +13,8 @@ import ReportesPage from './pages/reportes/ReportesPage';
 import BloqueosPage from './pages/bloqueos/BloqueosPage';
 import CapturaPage from './pages/captura/CapturaPage';
 
+import MfaSetupPage from './pages/auth/MfaSetupPage';
+
 const App = () => (
   <BrowserRouter>
     <AuthProvider>
@@ -20,6 +22,7 @@ const App = () => (
         <Route path="/login" element={<LoginPage />} />
         <Route path="/unauthorized" element={<UnauthorizedPage />} />
         <Route path="/captura" element={<CapturaPage />} />
+        <Route path="/mfa-setup" element={<MfaSetupPage />} />
         <Route
           path="/"
           element={
@@ -31,8 +34,22 @@ const App = () => (
           <Route index element={<Navigate to="/dashboard" replace />} />
           <Route path="dashboard" element={<DashboardPage />} />
           <Route path="inventario" element={<InventarioPage />} />
-          <Route path="clientes" element={<ClientesPage />} />
-          <Route path="reportes" element={<ReportesPage />} />
+          <Route
+            path="clientes"
+            element={
+              <ProtectedRoute roles={['admin', 'coordinador', 'supervisor', 'inmobiliaria']}>
+                <ClientesPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="reportes"
+            element={
+              <ProtectedRoute roles={['admin', 'coordinador', 'supervisor']}>
+                <ReportesPage />
+              </ProtectedRoute>
+            }
+          />
           <Route
             path="inmobiliarias"
             element={

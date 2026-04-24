@@ -15,7 +15,7 @@ const usuarioId = (pk: string) => pk.replace('USUARIO#', '');
 export const getUsuariosSistema = (): Promise<UsuarioSistema[]> =>
   apiGet('/admin/sistema/usuarios');
 
-export const crearUsuarioSistema = (data: { username: string; password: string; nombre?: string; rol: RolInterno }): Promise<void> =>
+export const crearUsuarioSistema = (data: { username: string; password: string; nombre?: string; rol: RolInterno }): Promise<{ mfa_secret?: string }> =>
   apiPost('/admin/sistema/usuarios', data);
 
 export const actualizarUsuarioSistema = (pk: string, data: { nombre?: string; rol?: RolInterno }): Promise<void> =>

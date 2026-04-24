@@ -70,3 +70,35 @@ export const logout = async () => {
   await signOut();
   window.location.href = '/login';
 };
+
+export const initMfaSetup = async (): Promise<{ secret: string; qrUri: string }> => {
+  const session = await fetchAuthSession();
+  const idToken = session.tokens?.idToken?.toString();
+  const accessToken = session.tokens?.accessToken?.toString();
+  if (!idToken || !accessToken) throw new Error('No tokens');
+  const res = await fetch(`${config.apiUrl}/auth/mfa/setup`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${idToken}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ access_token: accessToken }),
+  });
+  if (!res.ok) throw new Error('Error iniciando MFA setup');
+  const data = await res.json();
+  const username = session.tokens?.idToken?.payload?.['cognito:username'] as string ?? '';
+  return {
+    secret: data.secret_code,
+    qrUri: `otpauth://totp/JAM:${encodeURIComponent(username)}?secret=${data.secret_code}&issuer=JAM%20Construcciones`,
+  };
+};
+
+export const completeMfaSetup = async (code: string): Promise<void> => {
+  const session = await fetchAuthSession();
+  const idToken = session.tokens?.idToken?.toString();
+  const accessToken = session.tokens?.accessToken?.toString();
+  if (!idToken || !accessToken) throw new Error('No tokens');
+  const res = await fetch(`${config.apiUrl}/auth/mfa/verify`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${idToken}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ code, access_token: accessToken }),
+  });
+  if (!res.ok) throw new Error('Código incorrecto');
+};

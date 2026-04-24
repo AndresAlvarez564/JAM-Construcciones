@@ -20,6 +20,7 @@ export function useInventario() {
   const { usuario } = useAuth();
   const isAdmin = usuario?.rol === 'admin';
   const isInmobiliaria = usuario?.rol === 'inmobiliaria';
+  const canEdit = usuario?.rol === 'admin' || usuario?.rol === 'coordinador';
 
   const [vista, setVista] = useState<Vista>('proyectos');
   const [proyectos, setProyectos] = useState<Proyecto[]>([]);
@@ -196,13 +197,16 @@ export function useInventario() {
     }
   };
 
-  const inmoNombre = (id: string) => inmobiliarias.find(i => i.pk === id || i.pk === `INMOBILIARIA#${id}`)?.nombre ?? id;
+  const inmoNombre = (id: string) => {
+    // id puede venir con o sin prefijo INMOBILIARIA#
+    return inmobiliarias.find(i => i.pk === id || i.pk === `INMOBILIARIA#${id}` || i.pk.replace('INMOBILIARIA#', '') === id.replace('INMOBILIARIA#', ''))?.nombre ?? id;
+  };
   const proyectoActual = proyectos.find(p => p.proyecto_id === proyectoId);
 
   return {
     // Estado
     vista, proyectos, proyectoId, unidades, etapas, inmobiliarias, loading,
-    proyectoActual, isAdmin, isInmobiliaria,
+    proyectoActual, isAdmin, isInmobiliaria, canEdit,
     // Filtros
     filtroEstado, setFiltroEstado, filtroEtapa, setFiltroEtapa,
     filtroTipo, setFiltroTipo, filtroManzana, setFiltroManzana, filtroPiso, setFiltroPiso,

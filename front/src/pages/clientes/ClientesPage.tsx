@@ -26,11 +26,11 @@ const { Option } = Select;
 const { useBreakpoint } = Grid;
 
 const ESTADO_COLOR: Record<string, string> = {
-  captacion: 'blue', disponible: 'default', reserva: 'orange',
+  captacion: 'blue', reserva: 'orange',
   separacion: 'purple', inicial: 'cyan', desvinculado: 'red',
 };
 const ESTADO_LABEL: Record<string, string> = {
-  captacion: 'Captación', disponible: 'Disponible', reserva: 'Reserva',
+  captacion: 'Captación', reserva: 'Reserva',
   separacion: 'Separación', inicial: 'Inicial', desvinculado: 'Desvinculado',
 };
 

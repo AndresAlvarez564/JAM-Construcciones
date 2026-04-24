@@ -3,12 +3,14 @@ export type RolInterno = 'admin' | 'coordinador' | 'supervisor';
 
 export interface Usuario {
   sub: string;
+  username?: string;
   nombre: string;
   rol: Rol;
   inmobiliaria_id?: string;
   inmobiliaria_nombre?: string;
   proyectos?: string[];
   activo: boolean;
+  mfa_required?: boolean;
 }
 
 export interface LoginPayload {
@@ -104,7 +106,7 @@ export interface Bloqueo {
   estado: string;
 }
 
-export type EstadoCliente = 'captacion' | 'disponible' | 'reserva' | 'separacion' | 'inicial' | 'desvinculado';
+export type EstadoCliente = 'captacion' | 'reserva' | 'separacion' | 'inicial' | 'desvinculado';
 
 export interface HistorialProcesoEntry {
   estatus_anterior: string;

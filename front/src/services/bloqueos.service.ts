@@ -17,8 +17,13 @@ export const bloquearUnidad = (data: {
 }): Promise<{ unidad_id: string; fecha_liberacion: string; cliente_registrado: boolean; advertencia_cliente?: string }> =>
   apiPost('/bloqueos', data);
 
-export const getBloquesActivos = (): Promise<Bloqueo[]> =>
-  apiGet<Bloqueo[]>('/bloqueos/activos');
+export interface BloquesActivosResponse {
+  items: Bloqueo[];
+  next_token?: string;
+}
+
+export const getBloquesActivos = (): Promise<BloquesActivosResponse> =>
+  apiGet<BloquesActivosResponse>('/bloqueos/activos');
 
 export interface HistorialResponse {
   items: HistorialBloqueo[];

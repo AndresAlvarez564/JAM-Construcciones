@@ -46,9 +46,16 @@ export default function LoginPage() {
         await refetch();
         navigate('/dashboard');
       }
-    } catch (e) {
+    } catch (e: unknown) {
       console.error('LOGIN ERROR:', e);
-      setErr('Usuario o contraseña incorrectos');
+      // El trigger Pre-Authentication lanza este mensaje cuando el usuario
+      // interno no tiene MFA configurado aún
+      const msg = e instanceof Error ? e.message : String(e);
+      if (msg.includes('MFA_SETUP_REQUIRED')) {
+        setErr('Tu cuenta requiere configurar MFA antes de continuar. Contacta al administrador para que active tu configuración inicial.');
+      } else {
+        setErr('Usuario o contraseña incorrectos');
+      }
     }
   };
 

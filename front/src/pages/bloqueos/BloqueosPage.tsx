@@ -60,7 +60,7 @@ const BloqueosPage = () => {
     try {
       const [b, p, inmos] = await Promise.all([getBloquesActivos(), getProyectos(), getInmobiliarias()]);
       const ahora = Date.now();
-      const enriquecidos = b.map(item => ({
+      const enriquecidos = b.items.map(item => ({
         ...item,
         tiempo_restante: item.tiempo_restante ??
           Math.max(0, Math.floor((new Date(item.fecha_liberacion).getTime() - ahora) / 1000)),

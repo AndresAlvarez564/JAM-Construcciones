@@ -95,12 +95,12 @@ const InventarioPage = () => {
                 <Button icon={<ReloadOutlined />} onClick={() => inv.cargarUnidades()} loading={inv.loading} />
               </Tooltip>
             )}
-            {inv.isAdmin && inv.vista === 'proyectos' && (
+            {inv.canEdit && inv.vista === 'proyectos' && (
               <Button type="primary" icon={<PlusOutlined />} onClick={() => { inv.setModoProyecto('crear'); inv.setProyectoEditando(null); setImagenFile(null); formProyecto.resetFields(); inv.setModalProyecto(true); }}>
                 {isMobile ? 'Nuevo' : 'Nuevo proyecto'}
               </Button>
             )}
-            {inv.isAdmin && inv.vista === 'unidades' && (
+            {inv.canEdit && inv.vista === 'unidades' && (
               <>
                 <Button icon={<SettingOutlined />} onClick={() => inv.setDrawerEtapas(true)}>
                   {isMobile ? '' : 'Etapas'}
@@ -126,7 +126,7 @@ const InventarioPage = () => {
               >
                 <div style={{ height: 160, background: p.imagen_url ? undefined : projectGradient(p.nombre), display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative', overflow: 'hidden' }}>
                   {p.imagen_url ? <img src={p.imagen_url} alt={p.nombre} style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <AppstoreOutlined style={{ fontSize: 48, color: 'rgba(255,255,255,0.5)' }} />}
-                  {inv.isAdmin && (
+                  {inv.canEdit && (
                     <div style={{ position: 'absolute', top: 10, right: 10 }} onClick={e => e.stopPropagation()}>
                       <Space>
                         <Button size="small" type="text" icon={<EditOutlined />} style={{ color: '#fff', background: 'rgba(0,0,0,0.25)', borderRadius: 6 }}
@@ -209,6 +209,7 @@ const InventarioPage = () => {
           <TablaUnidades
             unidades={inv.unidades} etapas={inv.etapas} loading={inv.loading}
             isAdmin={inv.isAdmin} isInmobiliaria={inv.isInmobiliaria}
+            canEdit={inv.canEdit}
             inmoNombre={inv.inmoNombre}
             onEditar={abrirEditarUnidad}
             onEliminar={inv.handleEliminarUnidad}

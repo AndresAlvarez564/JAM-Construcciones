@@ -19,6 +19,7 @@ interface Props {
   loading: boolean;
   isAdmin: boolean;
   isInmobiliaria: boolean;
+  canEdit?: boolean;
   inmoNombre: (id: string) => string;
   onEditar: (u: Unidad) => void;
   onEliminar: (u: Unidad) => void;
@@ -26,8 +27,8 @@ interface Props {
 }
 
 // ── Card móvil ────────────────────────────────────────────────────────────────
-const UnidadCard = ({ u, etapas, isAdmin, isInmobiliaria, inmoNombre, onEditar, onEliminar, onBloquear }: {
-  u: Unidad; etapas: Etapa[]; isAdmin: boolean; isInmobiliaria: boolean;
+const UnidadCard = ({ u, etapas, isAdmin, isInmobiliaria, canEdit, inmoNombre, onEditar, onEliminar, onBloquear }: {
+  u: Unidad; etapas: Etapa[]; isAdmin: boolean; isInmobiliaria: boolean; canEdit?: boolean;
   inmoNombre: (id: string) => string;
   onEditar: (u: Unidad) => void; onEliminar: (u: Unidad) => void; onBloquear: (u: Unidad) => void;
 }) => {
@@ -60,7 +61,7 @@ const UnidadCard = ({ u, etapas, isAdmin, isInmobiliaria, inmoNombre, onEditar, 
               {u.tipo && <Tag style={{ margin: 0 }}>{u.tipo}</Tag>}
             </div>
           </div>
-          {isAdmin && (
+          {canEdit && (
             <Space size={4}>
               <Button size="small" icon={<EditOutlined />} onClick={() => onEditar(u)} />
               <Popconfirm title="¿Eliminar unidad?" okText="Sí" cancelText="No" onConfirm={() => onEliminar(u)}>
@@ -133,7 +134,7 @@ const UnidadCard = ({ u, etapas, isAdmin, isInmobiliaria, inmoNombre, onEditar, 
 };
 
 // ── Componente principal ──────────────────────────────────────────────────────
-const TablaUnidades = ({ unidades, etapas, loading, isAdmin, isInmobiliaria, inmoNombre, onEditar, onEliminar, onBloquear }: Props) => {
+const TablaUnidades = ({ unidades, etapas, loading, isAdmin, isInmobiliaria, canEdit, inmoNombre, onEditar, onEliminar, onBloquear }: Props) => {
   const { md } = useBreakpoint();
 
   // Móvil → cards
@@ -144,7 +145,7 @@ const TablaUnidades = ({ unidades, etapas, loading, isAdmin, isInmobiliaria, inm
       <div>
         {unidades.map(u => (
           <UnidadCard key={u.unidad_id} u={u} etapas={etapas}
-            isAdmin={isAdmin} isInmobiliaria={isInmobiliaria} inmoNombre={inmoNombre}
+            isAdmin={isAdmin} isInmobiliaria={isInmobiliaria} canEdit={canEdit} inmoNombre={inmoNombre}
             onEditar={onEditar} onEliminar={onEliminar} onBloquear={onBloquear} />
         ))}
       </div>
@@ -201,7 +202,7 @@ const TablaUnidades = ({ unidades, etapas, loading, isAdmin, isInmobiliaria, inm
         );
       },
     },
-    ...(isAdmin ? [
+    ...(canEdit ? [
       { title: 'Bloqueado por', dataIndex: 'bloqueado_por', key: 'bloqueado_por', render: (v: string) => v ? <Tag>{inmoNombre(v)}</Tag> : <Text type="secondary">—</Text> },
       { title: 'Fecha bloqueo', dataIndex: 'fecha_bloqueo', key: 'fecha_bloqueo', render: (v: string) => v ? new Date(v).toLocaleDateString('es-VE') : <Text type="secondary">—</Text> },
       { title: '', key: 'acciones', width: 90, render: (_: any, u: Unidad) => (
@@ -213,6 +214,9 @@ const TablaUnidades = ({ unidades, etapas, loading, isAdmin, isInmobiliaria, inm
           </Popconfirm>
         </Space>
       )},
+    ] : isAdmin ? [
+      { title: 'Bloqueado por', dataIndex: 'bloqueado_por', key: 'bloqueado_por', render: (v: string) => v ? <Tag>{inmoNombre(v)}</Tag> : <Text type="secondary">—</Text> },
+      { title: 'Fecha bloqueo', dataIndex: 'fecha_bloqueo', key: 'fecha_bloqueo', render: (v: string) => v ? new Date(v).toLocaleDateString('es-VE') : <Text type="secondary">—</Text> },
     ] : []),
     ...(isInmobiliaria ? [{
       title: '', key: 'bloqueo', width: 120,

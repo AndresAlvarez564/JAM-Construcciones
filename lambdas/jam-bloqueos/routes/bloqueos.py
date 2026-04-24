@@ -5,7 +5,7 @@ from datetime import datetime, timezone, timedelta
 from botocore.exceptions import ClientError
 from boto3.dynamodb.conditions import Key, Attr
 from utils.response import ok, bad_request, conflict, too_many, not_found
-from utils.auth import get_inmobiliaria_id
+from utils.auth import get_inmobiliaria_id, require_admin
 from utils import scheduler as sched
 from utils.clientes import registrar_cliente_y_proceso
 
@@ -66,31 +66,25 @@ def bloquear(event):
     unidad_nombre = f"{torre_nombre} · {id_unidad}" if torre_nombre else id_unidad
 
     # Si es admin asignando cliente a un bloqueo existente, usar la inmobiliaria del bloqueo
-    from utils.auth import require_admin
     if require_admin(event) and unidad_item.get('bloqueado_por'):
         inmo_id_real = unidad_item['bloqueado_por']
         inmo_info = usuarios.get_item(Key={'pk': inmo_id_real, 'sk': 'METADATA'}).get('Item', {})
         inmo_id = inmo_id_real
         inmo_nombre = inmo_info.get('nombre', inmo_id_real)
 
-    # Normalizar proyecto_id (sin prefijo para claves, con prefijo para inventario)
-    proyecto_id_clean = proyecto_id.replace('PROYECTO#', '') if proyecto_id else proyecto_id
-
     # Validar exclusividad del cliente ANTES de bloquear
     if tiene_cliente:
-        from boto3.dynamodb.conditions import Key as DKey, Attr as DAttr
         clientes_table_name = os.environ.get('CLIENTES_TABLE')
         if clientes_table_name:
             clientes_t = dynamodb.Table(clientes_table_name)
-            # Verificar primero si el cliente ya existe para esta inmo+proyecto (no hay conflicto)
             pk_cliente = f'CLIENTE#{cedula}#{inmo_id}'
             sk_proy = f'PROYECTO#{proyecto_id_clean}'
             existing_cliente = clientes_t.get_item(Key={'pk': pk_cliente, 'sk': sk_proy}).get('Item')
             if not existing_cliente:
                 resultado = clientes_t.query(
                     IndexName='gsi-cedula-proyecto',
-                    KeyConditionExpression=DKey('cedula').eq(cedula) & DKey('sk').eq(sk_proy),
-                    FilterExpression=DAttr('exclusividad_activa').eq(True),
+                    KeyConditionExpression=Key('cedula').eq(cedula) & Key('sk').eq(sk_proy),
+                    FilterExpression=Attr('exclusividad_activa').eq(True),
                 )
                 for item in resultado.get('Items', []):
                     if item.get('inmobiliaria_id') != inmo_id:
@@ -224,10 +218,23 @@ def bloquear(event):
 
 
 def listar_activos(event):
-    result = inventario.query(
-        IndexName='gsi-estado',
-        KeyConditionExpression=Key('estado').eq('bloqueada'),
-    )
+    qs = event.get('queryStringParameters') or {}
+    next_token = qs.get('next_token')
+    limit = min(int(qs.get('limit', 100)), 200)
+
+    kwargs = {
+        'IndexName': 'gsi-estado',
+        'KeyConditionExpression': Key('estado').eq('bloqueada'),
+        'Limit': limit,
+    }
+    if next_token:
+        import base64, json as _json
+        try:
+            kwargs['ExclusiveStartKey'] = _json.loads(base64.b64decode(next_token).decode())
+        except Exception:
+            pass
+
+    result = inventario.query(**kwargs)
     items = result.get('Items', [])
 
     for item in items:
@@ -272,4 +279,10 @@ def listar_activos(event):
                 except Exception:
                     pass
 
-    return ok(items)
+    resp = {'items': items}
+    if result.get('LastEvaluatedKey'):
+        import base64, json as _json
+        resp['next_token'] = base64.b64encode(
+            _json.dumps(result['LastEvaluatedKey']).encode()
+        ).decode()
+    return ok(resp)

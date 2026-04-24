@@ -13,6 +13,7 @@ const ProtectedRoute = ({ children, roles }: Props) => {
 
   if (loading) return <Spin fullscreen />;
   if (!usuario) return <Navigate to="/login" replace />;
+  if (usuario.mfa_required) return <Navigate to="/mfa-setup" replace />;
   if (roles && !roles.includes(usuario.rol)) return <Navigate to="/unauthorized" replace />;
 
   return <>{children}</>;

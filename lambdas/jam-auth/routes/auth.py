@@ -92,17 +92,14 @@ def confirm_mfa(event):
 def mfa_setup(event):
     """Inicia el setup de TOTP: devuelve secretCode para QR y clave manual."""
     try:
-        # Requiere access token del usuario autenticado (sesión MFA_SETUP)
         body = json.loads(event.get('body') or '{}')
         session = body.get('session')
 
         if session:
-            # Viene del challenge MFA_SETUP — usar AssociateSoftwareToken con session
             result = cognito.associate_software_token(Session=session)
         else:
-            # Usuario ya autenticado — usar access token
-            claims = event.get('requestContext', {}).get('authorizer', {}).get('claims', {})
-            access_token = _get_access_token(event)
+            # Preferir access_token del body, luego del header Authorization
+            access_token = body.get('access_token') or _get_access_token(event)
             if not access_token:
                 return _build(401, {'message': 'No autorizado'})
             result = cognito.associate_software_token(AccessToken=access_token)
@@ -137,7 +134,7 @@ def mfa_verify(event):
                 return _build(400, {'message': 'Verificación fallida'})
             return ok({'message': 'MFA configurado. Inicia sesión nuevamente.'})
         else:
-            access_token = _get_access_token(event)
+            access_token = body.get('access_token') or _get_access_token(event)
             if not access_token:
                 return _build(401, {'message': 'No autorizado'})
             result = cognito.verify_software_token(
@@ -147,11 +144,21 @@ def mfa_verify(event):
             )
             if result.get('Status') != 'SUCCESS':
                 return _build(400, {'message': 'Verificación fallida'})
-            # Activar TOTP como MFA preferido
-            cognito.set_user_mfa_preference(
-                AccessToken=access_token,
-                SoftwareTokenMfaSettings={'Enabled': True, 'PreferredMfa': True},
-            )
+            # Activar MFA usando admin API con username de DynamoDB
+            claims = event.get('requestContext', {}).get('authorizer', {}).get('claims', {})
+            cognito_sub = claims.get('sub')
+            username = None
+            if cognito_sub:
+                table = dynamodb.Table(USUARIOS_TABLE)
+                item = table.get_item(Key={'pk': f'USUARIO#{cognito_sub}', 'sk': 'METADATA'}).get('Item')
+                if item:
+                    username = item.get('cognito_username')
+            if username:
+                cognito.admin_set_user_mfa_preference(
+                    UserPoolId=USER_POOL_ID,
+                    Username=username,
+                    SoftwareTokenMfaSettings={'Enabled': True, 'PreferredMfa': True},
+                )
             return ok({'message': 'MFA activado correctamente'})
     except ClientError as e:
         code_err = e.response['Error']['Code']
@@ -159,6 +166,8 @@ def mfa_verify(event):
             return _build(400, {'message': 'Código incorrecto'})
         return _build(500, {'message': f'Error verificación MFA: {code_err}'})
 
+
+ROLES_INTERNOS = {'admin', 'coordinador', 'supervisor'}
 
 def me(event):
     try:
@@ -181,6 +190,18 @@ def me(event):
             'inmobiliaria_id': item.get('inmobiliaria_id'),
             'activo': item.get('activo'),
         }
+
+        # Detectar si usuario interno no tiene MFA configurado
+        if item.get('rol') in ROLES_INTERNOS:
+            username = item.get('cognito_username')
+            if username:
+                user_data = cognito.admin_get_user(
+                    UserPoolId=USER_POOL_ID,
+                    Username=username,
+                )
+                tiene_mfa = 'SOFTWARE_TOKEN_MFA' in user_data.get('UserMFASettingList', [])
+                if not tiene_mfa:
+                    perfil['mfa_required'] = True
 
         if item.get('rol') == 'inmobiliaria' and item.get('inmobiliaria_id'):
             inmo = table.get_item(

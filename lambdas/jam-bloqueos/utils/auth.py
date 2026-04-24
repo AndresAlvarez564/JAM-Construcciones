@@ -3,7 +3,6 @@ def get_claims(event):
 
 
 ROLES_INTERNOS = ('admin', 'coordinador', 'supervisor')
-
 def get_rol(event):
     claims = get_claims(event)
     groups = claims.get('cognito:groups', '')

@@ -1,4 +1,4 @@
-import { apiGet, apiPut, apiPost } from './api';
+import { apiGet, apiPut } from './api';
 import type { Proceso } from '../types';
 
 export interface CambiarEstatusPayload {
@@ -17,11 +17,8 @@ export const getMisProcesos = (proyectoId?: string): Promise<Proceso[]> => {
   return apiGet<Proceso[]>(`/mis-procesos${qs}`);
 };
 
-export const crearProceso = (
-  cedula: string,
-  data: { inmobiliaria_id: string; proyecto_id: string; unidad_id: string }
-): Promise<{ message: string; unidad_id: string; estado: string }> =>
-  apiPost(`/admin/clientes/${encodeURIComponent(cedula)}/procesos`, data);
+// Endpoint deshabilitado en backend — procesos se crean exclusivamente desde el flujo de bloqueo
+// export const crearProceso = ...
 
 export const cambiarEstatus = (
   cedula: string,
