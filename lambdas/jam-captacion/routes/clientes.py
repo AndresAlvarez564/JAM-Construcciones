@@ -20,11 +20,12 @@ def _now():
 
 
 def _get_inmobiliaria_id(sub: str) -> str:
-    """Resuelve el inmobiliaria_id real desde el sub del usuario."""
+    """Resuelve el inmobiliaria_id real desde el sub del usuario (sin prefijo INMOBILIARIA#)."""
     item = usuarios.get_item(
         Key={'pk': f'USUARIO#{sub}', 'sk': 'METADATA'}
     ).get('Item', {})
-    return item.get('inmobiliaria_id', f'USUARIO#{sub}')
+    raw = item.get('inmobiliaria_id', f'USUARIO#{sub}')
+    return raw.replace('INMOBILIARIA#', '')
 
 
 def _add_months(dt: datetime, months: int) -> datetime:
@@ -79,11 +80,22 @@ def registrar(event):
         FilterExpression=Attr('exclusividad_activa').eq(True),
     )
     for item in resultado.get('Items', []):
-        if item.get('inmobiliaria_id') != inmobiliaria_id:
+        # Normalizar ambos lados para comparar sin prefijo INMOBILIARIA#
+        item_inmo = item.get('inmobiliaria_id', '').replace('INMOBILIARIA#', '')
+        if item_inmo != inmobiliaria_id:
             return conflict(
                 'Este cliente tiene exclusividad activa con otra inmobiliaria en este proyecto. '
                 'Contacta a JAM Construcciones.'
             )
+
+    # Verificar si ya existe con prefijo (registrado antes de normalización)
+    pk_legacy = f'CLIENTE#{cedula}#INMOBILIARIA#{inmobiliaria_id}'
+    existing_legacy = clientes.get_item(Key={'pk': pk_legacy, 'sk': sk}).get('Item')
+    if existing_legacy:
+        if existing_legacy.get('exclusividad_activa'):
+            return _actualizar_datos(pk_legacy, sk, body, existing_legacy)
+        else:
+            return _recaptar(pk_legacy, sk, body, existing_legacy, cedula, inmobiliaria_id, proyecto_id)
 
     # Registrar nuevo cliente
     return _crear(pk, sk, body, cedula, inmobiliaria_id, proyecto_id)

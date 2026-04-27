@@ -114,7 +114,14 @@ const ClientesPage = () => {
   }, [cargar, isAdmin]);
 
   const proyectoNombre = (id: string) => proyectos.find(p => p.proyecto_id === id)?.nombre ?? id;
-  const inmoNombre = (id: string) => inmobiliarias.find(i => i.pk === id)?.nombre ?? id;
+  const inmoNombre = (id: string) => {
+    const normalizado = id.replace('INMOBILIARIA#', '');
+    return inmobiliarias.find(i =>
+      i.pk === id ||
+      i.pk === `INMOBILIARIA#${normalizado}` ||
+      i.pk.replace('INMOBILIARIA#', '') === normalizado
+    )?.nombre ?? id;
+  };
 
   // Filtro local por búsqueda
   const clientesFiltrados = busqueda.trim()
@@ -203,6 +210,7 @@ const ClientesPage = () => {
       await registrarCliente({ ...values, fecha_nacimiento: values.fecha_nacimiento ? dayjs(values.fecha_nacimiento).format('YYYY-MM-DD') : undefined });
       message.success('Cliente registrado');
       setModalOpen(false); form.resetFields();
+      setNextToken(undefined);
       cargar(proyectoFiltro);
     } catch (err: any) {
       const msg = err?.response?.data?.message || err?.response?.data?.error;
@@ -578,7 +586,10 @@ const ClientesPage = () => {
       {/* Modal registro */}
       <Modal title={<Space><UserOutlined /> Registrar cliente</Space>}
         open={modalOpen} onCancel={() => { setModalOpen(false); form.resetFields(); }}
-        onOk={() => form.submit()} okText="Registrar" cancelText="Cancelar" width={600}>
+        onOk={() => form.submit()} okText="Registrar" cancelText="Cancelar" width={600}
+        centered
+        style={{ top: 20 }}
+        styles={{ body: { maxHeight: 'calc(100vh - 200px)', overflowY: 'auto', padding: '16px 24px' } }}>
         <Form form={form} layout="vertical" onFinish={handleRegistrar}>
           <Form.Item name="proyecto_id" label="Proyecto" rules={[{ required: true }]}>
             <Select placeholder="Selecciona un proyecto">
