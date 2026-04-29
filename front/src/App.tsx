@@ -11,6 +11,7 @@ import InmobiliariasPage from './pages/inmobiliarias/InmobiliariasPage';
 import UsuariosSistemaPage from './pages/sistema/UsuariosSistemaPage';
 import ReportesPage from './pages/reportes/ReportesPage';
 import BloqueosPage from './pages/bloqueos/BloqueosPage';
+import ProcesosPage from './pages/procesos/ProcesosPage';
 import CapturaPage from './pages/captura/CapturaPage';
 
 import MfaSetupPage from './pages/auth/MfaSetupPage';
@@ -63,6 +64,14 @@ const App = () => (
             element={
               <ProtectedRoute roles={['admin']}>
                 <BloqueosPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="procesos"
+            element={
+              <ProtectedRoute roles={['admin', 'coordinador', 'supervisor']}>
+                <ProcesosPage />
               </ProtectedRoute>
             }
           />

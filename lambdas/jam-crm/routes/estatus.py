@@ -23,7 +23,8 @@ TRANSICIONES = {
     'captacion':  ['reserva', 'desvinculado'],
     'reserva':    ['separacion', 'desvinculado'],
     'separacion': ['inicial', 'desvinculado'],
-    'inicial':    ['desvinculado'],
+    'inicial':    ['vendida', 'desvinculado'],
+    'vendida':    [],
 }
 
 
@@ -190,6 +191,82 @@ def listar_procesos(event, cedula):
     return ok(result.get('Items', []))
 
 
+def listar_todos_procesos(event):
+    """GET /admin/procesos — lista procesos activos o todos según filtros."""
+    qs = event.get('queryStringParameters') or {}
+    proyecto_id = qs.get('proyecto_id')
+    inmobiliaria_id = qs.get('inmobiliaria_id')
+    estado = qs.get('estado')
+    incluir_cerrados = qs.get('incluir_cerrados', 'false').lower() == 'true'
+    next_token = qs.get('next_token')
+    limit = min(int(qs.get('limit', 100)), 200)
+
+    if proyecto_id:
+        kwargs = {
+            'IndexName': 'gsi-proyecto-procesos',
+            'KeyConditionExpression': Key('proyecto_id').eq(proyecto_id),
+            'Limit': limit,
+        }
+        query_fn = procesos_table.query
+    else:
+        kwargs = {'Limit': limit}
+        query_fn = procesos_table.scan
+
+    if next_token:
+        import base64, json as _json
+        try:
+            kwargs['ExclusiveStartKey'] = _json.loads(base64.b64decode(next_token).decode())
+        except Exception:
+            pass
+
+    filtros = []
+    if not incluir_cerrados:
+        filtros.append(Attr('estado').is_in(['captacion', 'reserva', 'separacion', 'inicial']))
+    if estado:
+        filtros.append(Attr('estado').eq(estado))
+    if inmobiliaria_id:
+        filtros.append(Attr('inmobiliaria_id').eq(inmobiliaria_id))
+
+    if filtros:
+        expr = filtros[0]
+        for f in filtros[1:]:
+            expr = expr & f
+        kwargs['FilterExpression'] = expr
+
+    result = query_fn(**kwargs)
+    items = result.get('Items', [])
+
+    # Enriquecer con datos del cliente (con cache por cedula+inmo+proyecto)
+    cache = {}
+    for item in items:
+        cedula = item.get('cedula', '')
+        inmo_id = item.get('inmobiliaria_id', '')
+        proy_id = item.get('proyecto_id', '')
+        key = f'{cedula}#{inmo_id}#{proy_id}'
+        if key not in cache:
+            try:
+                c = clientes_table.get_item(
+                    Key={'pk': f'CLIENTE#{cedula}#{inmo_id}', 'sk': f'PROYECTO#{proy_id}'}
+                ).get('Item', {})
+                cache[key] = {
+                    'nombres': c.get('nombres', ''),
+                    'apellidos': c.get('apellidos', ''),
+                    'correo': c.get('correo', ''),
+                    'telefono': c.get('telefono', ''),
+                }
+            except Exception:
+                cache[key] = {}
+        item['cliente'] = cache[key]
+
+    resp = {'items': items}
+    if result.get('LastEvaluatedKey'):
+        import base64, json as _json
+        resp['next_token'] = base64.b64encode(
+            _json.dumps(result['LastEvaluatedKey']).encode()
+        ).decode()
+    return ok(resp)
+
+
 def sched_eliminar_bloqueo(unidad_id):
     """Cancela los schedules de EventBridge del bloqueo al confirmar reserva."""
     safe = unidad_id.replace('/', '-').replace('#', '-')
@@ -289,6 +366,9 @@ def cambiar_estatus(event, cedula, proyecto_id, unidad_id):
             UpdateExpression='SET pago_confirmado = :v',
             ExpressionAttributeValues={':v': True},
         )
+        _actualizar_unidad(proyecto_id, unidad_id, 'vendida')
+    elif nuevo_estatus == 'vendida':
+        # Cierre definitivo de venta
         _actualizar_unidad(proyecto_id, unidad_id, 'vendida')
     elif nuevo_estatus == 'desvinculado':
         # Si venía de separacion, cancelar la alerta también

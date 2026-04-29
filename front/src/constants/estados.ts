@@ -2,18 +2,28 @@ export const ESTADO_UNIDAD_CONFIG: Record<string, { label: string; tagColor: str
   disponible:    { label: 'Disponible',    tagColor: 'success' },
   bloqueada:     { label: 'Bloqueada',     tagColor: 'warning' },
   no_disponible: { label: 'No disponible', tagColor: 'orange' },
-  vendida:       { label: 'Vendida',       tagColor: 'default' },
+  vendida:       { label: 'Vendida',       tagColor: 'purple' },
   desvinculada:  { label: 'Desvinculada',  tagColor: 'error' },
 };
 
 export const ESTADO_PROCESO_COLOR: Record<string, string> = {
-  captacion: 'blue', disponible: 'default', reserva: 'orange',
-  separacion: 'purple', inicial: 'cyan', desvinculado: 'red',
+  captacion:   'blue',
+  disponible:  'default',
+  reserva:     'orange',
+  separacion:  'purple',
+  inicial:     'cyan',
+  vendida:     'green',
+  desvinculado:'red',
 };
 
 export const ESTADO_PROCESO_LABEL: Record<string, string> = {
-  captacion: 'Captación', disponible: 'Disponible', reserva: 'Reserva',
-  separacion: 'Separación', inicial: 'Inicial', desvinculado: 'Desvinculado',
+  captacion:    'Captación',
+  disponible:   'Disponible',
+  reserva:      'Reserva',
+  separacion:   'Separación',
+  inicial:      'Inicial',
+  vendida:      'Vendida',
+  desvinculado: 'Desvinculado',
 };
 
 export const projectGradient = (nombre: string): string => {

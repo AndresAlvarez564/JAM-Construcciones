@@ -7,6 +7,37 @@ export interface CambiarEstatusPayload {
   notificar: boolean;
 }
 
+export interface ProcesoEnriquecido extends Proceso {
+  cliente?: {
+    nombres: string;
+    apellidos: string;
+    correo?: string;
+    telefono?: string;
+  };
+}
+
+export interface ProcesosResponse {
+  items: ProcesoEnriquecido[];
+  next_token?: string;
+}
+
+export const listarTodosProcesos = (params?: {
+  proyecto_id?: string;
+  inmobiliaria_id?: string;
+  estado?: string;
+  incluir_cerrados?: boolean;
+  next_token?: string;
+}): Promise<ProcesosResponse> => {
+  const entries: Record<string, string> = {};
+  if (params?.proyecto_id) entries.proyecto_id = params.proyecto_id;
+  if (params?.inmobiliaria_id) entries.inmobiliaria_id = params.inmobiliaria_id;
+  if (params?.estado) entries.estado = params.estado;
+  if (params?.incluir_cerrados) entries.incluir_cerrados = 'true';
+  if (params?.next_token) entries.next_token = params.next_token;
+  const qs = Object.keys(entries).length ? '?' + new URLSearchParams(entries).toString() : '';
+  return apiGet<ProcesosResponse>(`/admin/procesos${qs}`);
+};
+
 export const getProcesosCliente = (cedula: string, inmobiliariaId?: string): Promise<Proceso[]> => {
   const qs = inmobiliariaId ? `?inmobiliaria_id=${encodeURIComponent(inmobiliariaId)}` : '';
   return apiGet<Proceso[]>(`/admin/clientes/${encodeURIComponent(cedula)}/procesos${qs}`);
@@ -16,9 +47,6 @@ export const getMisProcesos = (proyectoId?: string): Promise<Proceso[]> => {
   const qs = proyectoId ? `?proyecto_id=${proyectoId}` : '';
   return apiGet<Proceso[]>(`/mis-procesos${qs}`);
 };
-
-// Endpoint deshabilitado en backend — procesos se crean exclusivamente desde el flujo de bloqueo
-// export const crearProceso = ...
 
 export const cambiarEstatus = (
   cedula: string,

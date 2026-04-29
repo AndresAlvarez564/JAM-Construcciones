@@ -10,17 +10,18 @@ const TRANSICIONES: Record<string, string[]> = {
   captacion:  ['reserva', 'desvinculado'],
   reserva:    ['separacion', 'desvinculado'],
   separacion: ['inicial', 'desvinculado'],
-  inicial:    ['desvinculado'],
+  inicial:    ['vendida', 'desvinculado'],
+  vendida:    [],
 };
 
 const ESTADO_COLOR: Record<string, string> = {
   captacion: 'blue', reserva: 'orange',
-  separacion: 'purple', inicial: 'cyan', desvinculado: 'red',
+  separacion: 'purple', inicial: 'cyan', vendida: 'green', desvinculado: 'red',
 };
 
 const ESTADO_LABEL: Record<string, string> = {
   captacion: 'Captación', reserva: 'Reserva',
-  separacion: 'Separación', inicial: 'Inicial', desvinculado: 'Desvinculado',
+  separacion: 'Separación', inicial: 'Inicial', vendida: 'Vendida', desvinculado: 'Desvinculado',
 };
 
 interface Props {
@@ -143,6 +144,9 @@ const CambiarEstatusModal = ({ open, proceso, tieneContacto, onCancel, onConfirm
 
         {nuevoEstatus === 'reserva' && (
           <Alert type="info" showIcon message="La unidad pasará a no disponible." />
+        )}
+        {nuevoEstatus === 'vendida' && (
+          <Alert type="success" showIcon message="La unidad quedará marcada como vendida definitivamente." />
         )}
         {nuevoEstatus === 'desvinculado' && (
           <Alert type="warning" showIcon message="La unidad volverá a estar disponible." />

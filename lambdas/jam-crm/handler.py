@@ -28,6 +28,10 @@ def handler(event, context):
     if not es_admin:
         return forbidden()
 
+    # GET /admin/procesos — lista todos los procesos activos
+    if method == 'GET' and path == '/admin/procesos':
+        return estatus_routes.listar_todos_procesos(event)
+
     # GET /admin/clientes/{cedula}/procesos
     if method == 'GET' and cedula and path.endswith('/procesos'):
         return estatus_routes.listar_procesos(event, cedula)
