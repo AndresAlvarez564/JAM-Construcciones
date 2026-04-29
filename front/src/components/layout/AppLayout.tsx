@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { Outlet } from 'react-router-dom';
 import { MenuOutlined } from '@ant-design/icons';
 import Sidebar from './Sidebar';
+import ChatbotWidget from '../common/ChatbotWidget';
 
 const { Content, Sider } = Layout;
 const { useBreakpoint } = Grid;
@@ -62,6 +63,8 @@ const AppLayout = () => {
           <Outlet />
         </Content>
       </Layout>
+
+      <ChatbotWidget />
     </Layout>
   );
 };

@@ -1,27 +1,22 @@
 import { useState } from 'react';
-import { Modal, Select, Switch, Space, Typography, Alert, Tag, Divider } from 'antd';
-import { ArrowRightOutlined } from '@ant-design/icons';
+import { Modal, Select, Space, Typography, Alert, Tag, Divider, Button } from 'antd';
+import { ArrowRightOutlined, TeamOutlined, UserOutlined } from '@ant-design/icons';
 import type { Proceso } from '../../types';
+import { ESTADO_PROCESO_COLOR, ESTADO_PROCESO_LABEL } from '../../constants/estados';
 
 const { Text } = Typography;
 const { Option } = Select;
 
+export type ModoNotificacion = false | 'admin' | 'todos';
+
 const TRANSICIONES: Record<string, string[]> = {
-  captacion:  ['reserva', 'desvinculado'],
-  reserva:    ['separacion', 'desvinculado'],
-  separacion: ['inicial', 'desvinculado'],
-  inicial:    ['vendida', 'desvinculado'],
-  vendida:    [],
-};
-
-const ESTADO_COLOR: Record<string, string> = {
-  captacion: 'blue', reserva: 'orange',
-  separacion: 'purple', inicial: 'cyan', vendida: 'green', desvinculado: 'red',
-};
-
-const ESTADO_LABEL: Record<string, string> = {
-  captacion: 'Captación', reserva: 'Reserva',
-  separacion: 'Separación', inicial: 'Inicial', vendida: 'Vendida', desvinculado: 'Desvinculado',
+  captacion:       ['reserva', 'desvinculado'],
+  reserva:         ['separacion', 'desvinculado'],
+  separacion:      ['inicial', 'pagos_atrasados', 'desvinculado'],
+  inicial:         ['pagos_atrasados', 'contra_entrega', 'desvinculado'],
+  pagos_atrasados: ['inicial', 'contra_entrega', 'desvinculado'],
+  contra_entrega:  ['vendida', 'desvinculado'],
+  vendida:         [],
 };
 
 interface Props {
@@ -29,23 +24,21 @@ interface Props {
   proceso: Proceso;
   tieneContacto: boolean;
   onCancel: () => void;
-  onConfirm: (estatus: string, notificar: boolean) => Promise<void>;
+  onConfirm: (estatus: string, notificar: ModoNotificacion) => Promise<void>;
 }
 
 const CambiarEstatusModal = ({ open, proceso, tieneContacto, onCancel, onConfirm }: Props) => {
   const [nuevoEstatus, setNuevoEstatus] = useState<string | undefined>();
-  const [notificar, setNotificar] = useState(false);
   const [loading, setLoading] = useState(false);
 
   const opciones = TRANSICIONES[proceso.estado] ?? [];
 
-  const handleOk = async () => {
+  const handleConfirm = async (notificar: ModoNotificacion) => {
     if (!nuevoEstatus) return;
     setLoading(true);
     try {
       await onConfirm(nuevoEstatus, notificar);
       setNuevoEstatus(undefined);
-      setNotificar(false);
     } finally {
       setLoading(false);
     }
@@ -53,7 +46,6 @@ const CambiarEstatusModal = ({ open, proceso, tieneContacto, onCancel, onConfirm
 
   const handleCancel = () => {
     setNuevoEstatus(undefined);
-    setNotificar(false);
     onCancel();
   };
 
@@ -61,16 +53,12 @@ const CambiarEstatusModal = ({ open, proceso, tieneContacto, onCancel, onConfirm
     <Modal
       title="Cambiar estatus del proceso"
       open={open}
-      onOk={handleOk}
       onCancel={handleCancel}
-      okText="Confirmar"
-      cancelText="Cancelar"
-      okButtonProps={{ disabled: !nuevoEstatus, loading }}
-      width={440}
+      footer={null}
+      width={460}
     >
       <Space direction="vertical" style={{ width: '100%' }} size="middle">
 
-        {/* Unidad */}
         <div style={{
           background: '#f5f5f5', borderRadius: 8, padding: '10px 14px',
           display: 'flex', alignItems: 'center', justifyContent: 'space-between',
@@ -81,22 +69,18 @@ const CambiarEstatusModal = ({ open, proceso, tieneContacto, onCancel, onConfirm
           </Tag>
         </div>
 
-        {/* Transición visual */}
-        <div style={{
-          background: '#fafafa', border: '1px solid #f0f0f0', borderRadius: 8,
-          padding: '12px 16px',
-        }}>
+        <div style={{ background: '#fafafa', border: '1px solid #f0f0f0', borderRadius: 8, padding: '12px 16px' }}>
           <Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 10 }}>
             Transición de estatus
           </Text>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <Tag color={ESTADO_COLOR[proceso.estado]} style={{ margin: 0, fontSize: 13, padding: '2px 10px' }}>
-              {ESTADO_LABEL[proceso.estado] ?? proceso.estado}
+            <Tag color={ESTADO_PROCESO_COLOR[proceso.estado]} style={{ margin: 0, fontSize: 13, padding: '2px 10px' }}>
+              {ESTADO_PROCESO_LABEL[proceso.estado] ?? proceso.estado}
             </Tag>
             <ArrowRightOutlined style={{ color: '#bfbfbf' }} />
             {nuevoEstatus ? (
-              <Tag color={ESTADO_COLOR[nuevoEstatus]} style={{ margin: 0, fontSize: 13, padding: '2px 10px' }}>
-                {ESTADO_LABEL[nuevoEstatus] ?? nuevoEstatus}
+              <Tag color={ESTADO_PROCESO_COLOR[nuevoEstatus]} style={{ margin: 0, fontSize: 13, padding: '2px 10px' }}>
+                {ESTADO_PROCESO_LABEL[nuevoEstatus] ?? nuevoEstatus}
               </Tag>
             ) : (
               <Tag style={{ margin: 0, fontSize: 13, padding: '2px 10px', color: '#bfbfbf', borderStyle: 'dashed' }}>
@@ -106,7 +90,6 @@ const CambiarEstatusModal = ({ open, proceso, tieneContacto, onCancel, onConfirm
           </div>
         </div>
 
-        {/* Selector */}
         <div>
           <Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 6 }}>Nuevo estatus</Text>
           <Select
@@ -117,7 +100,9 @@ const CambiarEstatusModal = ({ open, proceso, tieneContacto, onCancel, onConfirm
           >
             {opciones.map(op => (
               <Option key={op} value={op}>
-                <Tag color={ESTADO_COLOR[op]} style={{ margin: 0 }}>{ESTADO_LABEL[op] ?? op}</Tag>
+                <Tag color={ESTADO_PROCESO_COLOR[op]} style={{ margin: 0 }}>
+                  {ESTADO_PROCESO_LABEL[op] ?? op}
+                </Tag>
               </Option>
             ))}
           </Select>
@@ -127,21 +112,6 @@ const CambiarEstatusModal = ({ open, proceso, tieneContacto, onCancel, onConfirm
           )}
         </div>
 
-        {/* Notificación */}
-        {tieneContacto && nuevoEstatus && (
-          <>
-            <Divider style={{ margin: '0' }} />
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <div>
-                <Text>Notificar al cliente</Text>
-                <br />
-                <Text type="secondary" style={{ fontSize: 12 }}>Se enviará un correo/mensaje al cliente</Text>
-              </div>
-              <Switch checked={notificar} onChange={setNotificar} />
-            </div>
-          </>
-        )}
-
         {nuevoEstatus === 'reserva' && (
           <Alert type="info" showIcon message="La unidad pasará a no disponible." />
         )}
@@ -150,6 +120,58 @@ const CambiarEstatusModal = ({ open, proceso, tieneContacto, onCancel, onConfirm
         )}
         {nuevoEstatus === 'desvinculado' && (
           <Alert type="warning" showIcon message="La unidad volverá a estar disponible." />
+        )}
+
+        {nuevoEstatus && (
+          <>
+            <Divider style={{ margin: '4px 0' }} />
+            <div>
+              <Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 8 }}>
+                Notificación por correo (opcional)
+              </Text>
+              <Space style={{ width: '100%' }} direction="vertical" size={8}>
+                {tieneContacto && (
+                  <Button
+                    block
+                    icon={<TeamOutlined />}
+                    onClick={() => handleConfirm('todos')}
+                    loading={loading}
+                    style={{ textAlign: 'left', height: 'auto', padding: '8px 14px' }}
+                  >
+                    <div>
+                      <div style={{ fontWeight: 500 }}>Notificar a todos</div>
+                      <div style={{ fontSize: 11, color: '#888', fontWeight: 400 }}>
+                        Inmobiliaria, cliente y administración
+                      </div>
+                    </div>
+                  </Button>
+                )}
+                <Button
+                  block
+                  icon={<UserOutlined />}
+                  onClick={() => handleConfirm('admin')}
+                  loading={loading}
+                  style={{ textAlign: 'left', height: 'auto', padding: '8px 14px' }}
+                >
+                  <div>
+                    <div style={{ fontWeight: 500 }}>Solo administración</div>
+                    <div style={{ fontSize: 11, color: '#888', fontWeight: 400 }}>
+                      Solo nos llega a nosotros
+                    </div>
+                  </div>
+                </Button>
+                <Button
+                  block
+                  onClick={() => handleConfirm(false)}
+                  loading={loading}
+                  type="text"
+                  style={{ color: '#8c8c8c' }}
+                >
+                  Confirmar sin notificar
+                </Button>
+              </Space>
+            </div>
+          </>
         )}
 
       </Space>

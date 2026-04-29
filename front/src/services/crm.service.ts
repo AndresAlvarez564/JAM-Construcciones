@@ -1,10 +1,11 @@
 import { apiGet, apiPut } from './api';
 import type { Proceso } from '../types';
+import type { ModoNotificacion } from '../components/common/CambiarEstatusModal';
 
 export interface CambiarEstatusPayload {
   estatus: string;
   inmobiliaria_id: string;
-  notificar: boolean;
+  notificar: ModoNotificacion;
 }
 
 export interface ProcesoEnriquecido extends Proceso {
@@ -14,6 +15,8 @@ export interface ProcesoEnriquecido extends Proceso {
     correo?: string;
     telefono?: string;
   };
+  estado_unidad?: string;
+  fecha_liberacion_unidad?: string;
 }
 
 export interface ProcesosResponse {

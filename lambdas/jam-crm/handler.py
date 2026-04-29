@@ -24,13 +24,15 @@ def handler(event, context):
     if method == 'GET' and path.endswith('/analytics'):
         return analytics_routes.get_analytics(event)
 
+    # GET /admin/procesos — accesible para internos; inmobiliaria solo ve sus propios procesos
+    if method == 'GET' and path == '/admin/procesos':
+        if not es_admin and get_rol(event) != 'inmobiliaria':
+            return forbidden()
+        return estatus_routes.listar_todos_procesos(event)
+
     # El resto de endpoints solo para admin/coordinador/supervisor
     if not es_admin:
         return forbidden()
-
-    # GET /admin/procesos — lista todos los procesos activos
-    if method == 'GET' and path == '/admin/procesos':
-        return estatus_routes.listar_todos_procesos(event)
 
     # GET /admin/clientes/{cedula}/procesos
     if method == 'GET' and cedula and path.endswith('/procesos'):

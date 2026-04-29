@@ -57,6 +57,12 @@ const Sidebar = ({ onSelect }: Props) => {
         { key: '/sistema/usuarios', icon: <UserOutlined />, label: 'Usuarios' },
       ],
     }] : []),
+    ...(rol === 'inmobiliaria' ? [{
+      title: 'Ventas',
+      items: [
+        { key: '/procesos', icon: <ApartmentOutlined />, label: 'Procesos de venta' },
+      ],
+    }] : []),
   ];
 
   return (

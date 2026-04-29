@@ -108,7 +108,7 @@ export interface Bloqueo {
   cliente_nombre?: string;
 }
 
-export type EstadoCliente = 'captacion' | 'reserva' | 'separacion' | 'inicial' | 'vendida' | 'desvinculado';
+export type EstadoCliente = 'captacion' | 'reserva' | 'separacion' | 'inicial' | 'pagos_atrasados' | 'contra_entrega' | 'vendida' | 'desvinculado';
 
 export interface HistorialProcesoEntry {
   estatus_anterior: string;

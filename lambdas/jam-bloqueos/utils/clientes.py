@@ -196,10 +196,27 @@ def desvincular_unidad(unidad_id: str, cliente_cedula: str, inmobiliaria_id: str
         if not item or item.get('estado') != 'captacion':
             return  # Solo desvincular si sigue en captacion (no avanzó)
 
+        ts_ahora = datetime.now(timezone.utc).isoformat()
+        entrada_historial = {
+            'estatus_anterior': 'captacion',
+            'estatus_nuevo': 'desvinculado',
+            'ejecutado_por': 'sistema',
+            'ejecutado_por_nombre': 'Liberación automática (48h)',
+            'notificacion_enviada': False,
+            'timestamp': ts_ahora,
+        }
+
+        historial_actual = item.get('historial', [])
+        historial_actual.append(entrada_historial)
+
         procesos.update_item(
             Key={'pk': pk, 'sk': sk},
-            UpdateExpression='SET estado = :d, actualizado_en = :ts',
-            ExpressionAttributeValues={':d': 'desvinculado', ':ts': datetime.now(timezone.utc).isoformat()},
+            UpdateExpression='SET estado = :d, actualizado_en = :ts, historial = :h',
+            ExpressionAttributeValues={
+                ':d': 'desvinculado',
+                ':ts': ts_ahora,
+                ':h': historial_actual,
+            },
         )
     except Exception as e:
         print(f'desvincular_unidad error: {e}')

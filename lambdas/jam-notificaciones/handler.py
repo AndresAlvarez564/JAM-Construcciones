@@ -130,10 +130,14 @@ def _firma():
     <hr style="border:none;border-top:1px solid #e0e0e0;margin:24px 0">
     <table style="width:100%">
       <tr>
-        <td>
+        <td style="vertical-align:middle">
           <p style="margin:0;font-weight:600;color:#1a1a1a">JAM Construcciones</p>
           <p style="margin:4px 0 0;font-size:13px;color:#666">Sistema de Gestión Inmobiliaria</p>
           <p style="margin:4px 0 0;font-size:12px;color:#999">Este es un mensaje automático, no responder a este correo.</p>
+        </td>
+        <td style="text-align:right;vertical-align:middle;width:80px">
+          <img src="https://methodicatechnologybucketgeneral.s3.us-east-1.amazonaws.com/Jam-Construcciones.png"
+               alt="JAM Construcciones" style="height:56px;width:auto;object-fit:contain" />
         </td>
       </tr>
     </table>
@@ -142,10 +146,10 @@ def _firma():
 
 def _wrap(contenido):
     return f'''
-    <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:24px;color:#333">
-      <div style="background:#1a5276;padding:16px 24px;border-radius:8px 8px 0 0">
-        <h2 style="margin:0;color:#fff;font-size:18px">JAM Construcciones</h2>
-        <p style="margin:4px 0 0;color:#aed6f1;font-size:13px">Sistema de Gestión Inmobiliaria</p>
+    <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:0;color:#333">
+      <div style="background:#1a3c5e;padding:16px 24px;border-radius:8px 8px 0 0">
+        <div style="color:#fff;font-size:17px;font-weight:700;line-height:1.2">JAM Construcciones</div>
+        <div style="color:#aed6f1;font-size:12px;margin-top:4px">Sistema de Gestión Inmobiliaria</div>
       </div>
       <div style="background:#fff;border:1px solid #e0e0e0;border-top:none;padding:24px;border-radius:0 0 8px 8px">
         {contenido}
@@ -314,41 +318,160 @@ def _liberacion_manual(msg):
 
 def _cambio_estatus(msg):
     meta = msg.get('metadata', {})
-    if not msg.get('notificar'):
-        logger.info('cambio_estatus sin notificar=True, omitiendo email')
+    notificar = msg.get('notificar')  # 'todos' | 'admin' | False
+    if not notificar:
+        logger.info('cambio_estatus sin notificar, omitiendo email')
         return
 
     inmo_id = msg.get('inmobiliaria_id', '')
-    cedula = meta.get('cedula', '')
-    proyecto = _nombre_proyecto(msg.get('proyecto_id', ''))
-    estatus_anterior = meta.get('estatus_anterior', '')
-    nuevo_estatus = meta.get('nuevo_estatus', '')
-    unidad = meta.get('unidad_nombre') or meta.get('unidad_id', '')
+    cedula = msg.get('cedula', '') or meta.get('cedula', '')
+    proyecto_id = msg.get('proyecto_id', '')
+    nuevo_estatus = msg.get('estatus_nuevo', '') or meta.get('nuevo_estatus', '')
+    unidad = msg.get('unidad_nombre', '') or meta.get('unidad_nombre') or meta.get('unidad_id', '')
+    proyecto = _nombre_proyecto(proyecto_id)
     inmo_nombre = _nombre_inmobiliaria(inmo_id)
-    cliente = _nombre_cliente(cedula, inmo_id, msg.get('proyecto_id', '')) if cedula else ''
+    cliente_nombre_raw = f"{msg.get('nombres', '')} {msg.get('apellidos', '')}".strip()
+    if not cliente_nombre_raw:
+        cliente_nombre_raw = _nombre_cliente(cedula, inmo_id, proyecto_id)
 
-    correo_cliente = _correo_cliente(cedula, inmo_id, msg.get('proyecto_id', ''))
     correos_inmo = _correos_inmobiliaria(inmo_id)
-    correos = ([correo_cliente] if correo_cliente else []) + correos_inmo
+    correo_cliente = _correo_cliente(cedula, inmo_id, proyecto_id)
 
-    fila_cliente = f'<tr><td style="padding:6px 0;color:#666">Cliente</td><td style="padding:6px 0;font-weight:500">{cliente}</td></tr>' if cliente else ''
-    fila_anterior = f'<tr><td style="padding:6px 0;color:#666">Estatus anterior</td><td style="padding:6px 0;font-weight:500">{estatus_anterior}</td></tr>' if estatus_anterior else ''
-    fila_nuevo = f'<tr><td style="padding:6px 0;color:#666">Nuevo estatus</td><td style="padding:6px 0;font-weight:500;color:#27ae60">{nuevo_estatus}</td></tr>' if nuevo_estatus else ''
+    # Determinar destinatarios según modo
+    if notificar == 'todos':
+        destinatarios = [correo_cliente] + correos_inmo + [ADMIN_EMAIL]
+    else:  # 'admin'
+        destinatarios = [ADMIN_EMAIL]
 
-    _enviar(
-        correos,
+    asunto, cuerpo = _construir_mensaje_estatus(
+        nuevo_estatus, unidad, proyecto, inmo_nombre, cliente_nombre_raw
+    )
+    _enviar(destinatarios, asunto, cuerpo)
+
+
+def _construir_mensaje_estatus(estatus, unidad, proyecto, inmo_nombre, cliente_nombre):
+    """Retorna (asunto, cuerpo_html) según el estatus, con los mensajes oficiales de JAM."""
+
+    COLOR = '#1a3c5e'
+    pie = '<br><p style="color:#aaa;font-size:12px;margin:0">(Mensaje automático)</p>'
+
+    def tabla_base(filas_extra=''):
+        return f'''
+        <table style="width:100%;border-collapse:collapse;margin-top:16px;font-size:14px">
+          <tr><td style="padding:7px 0;color:#888;width:130px">Proyecto</td><td style="padding:7px 0;font-weight:500;color:#222">{proyecto}</td></tr>
+          <tr><td style="padding:7px 0;color:#888">Unidad</td><td style="padding:7px 0;font-weight:500;color:#222">{unidad}</td></tr>
+          {filas_extra}
+          <tr><td style="padding:7px 0;color:#888">Inmobiliaria</td><td style="padding:7px 0;font-weight:500;color:#222">{inmo_nombre}</td></tr>
+        </table>'''
+
+    fila_cliente = f'<tr><td style="padding:7px 0;color:#888">Cliente</td><td style="padding:7px 0;font-weight:500;color:#222">{cliente_nombre}</td></tr>' if cliente_nombre else ''
+
+    def titulo(texto):
+        return f'<h3 style="color:{COLOR};margin-top:0;font-size:16px">{texto}</h3>'
+
+    if estatus == 'disponible':
+        return (
+            f'Unidad disponible — {proyecto}',
+            f'''{titulo("Unidad disponible")}
+            <p style="margin:0 0 10px">Saludos,</p>
+            <p style="margin:0 0 10px">Le informamos que la unidad ha quedado disponible nuevamente por no haberse completado el proceso de reserva dentro del tiempo establecido.</p>
+            {tabla_base()}
+            <p style="margin:16px 0 0">Quedamos a la orden para cualquier consulta.</p>{pie}'''
+        )
+
+    if estatus == 'bloqueada':
+        return (
+            f'Unidad bloqueada — {proyecto}',
+            f'''{titulo("Unidad bloqueada")}
+            <p style="margin:0 0 10px">Saludos,</p>
+            <p style="margin:0 0 10px">Le informamos que la unidad ha sido bloqueada y cuenta con un plazo de <b>48 horas</b> para completar el proceso de reserva.</p>
+            <p style="margin:0 0 10px">En caso de no recibirse el pago dentro de este período, la unidad quedará disponible nuevamente de forma automática.</p>
+            {tabla_base(fila_cliente)}
+            <p style="margin:16px 0 0">Quedamos a la orden para cualquier consulta.</p>{pie}'''
+        )
+
+    if estatus == 'reserva':
+        return (
+            f'Unidad reservada — {proyecto}',
+            f'''{titulo("Unidad reservada")}
+            <p style="margin:0 0 10px">Saludos,</p>
+            <p style="margin:0 0 10px">Le informamos que hemos recibido el pago correspondiente a la <b>reserva</b> de la unidad <b>{unidad}</b>, a nombre del cliente <b>{cliente_nombre}</b>.</p>
+            <p style="margin:0 0 10px">Una vez contabilidad aplique el pago, estaremos remitiendo el recibo correspondiente.</p>
+            {tabla_base(fila_cliente)}
+            <p style="margin:16px 0 0">Quedamos a la orden para cualquier consulta.</p>{pie}'''
+        )
+
+    if estatus == 'separacion':
+        return (
+            f'Unidad separada — {proyecto}',
+            f'''{titulo("Separación registrada")}
+            <p style="margin:0 0 10px">Saludos,</p>
+            <p style="margin:0 0 10px">Le informamos que hemos recibido el pago correspondiente a la <b>separación</b> de la unidad <b>{unidad}</b>, a nombre del cliente <b>{cliente_nombre}</b>.</p>
+            <p style="margin:0 0 10px">Una vez contabilidad aplique el pago, estaremos remitiendo el recibo correspondiente.</p>
+            {tabla_base(fila_cliente)}
+            <p style="margin:16px 0 0">Quedamos a la orden para cualquier consulta.</p>{pie}'''
+        )
+
+    if estatus == 'inicial':
+        return (
+            f'Contrato de promesa de venta firmado — {proyecto}',
+            f'''{titulo("Contrato de promesa de venta firmado")}
+            <p style="margin:0 0 10px">Saludos,</p>
+            <p style="margin:0 0 10px">Le informamos que el contrato de promesa de venta correspondiente a la unidad <b>{unidad}</b>, a nombre del cliente <b>{cliente_nombre}</b> e inmobiliaria <b>{inmo_nombre}</b>, ha sido firmado exitosamente.</p>
+            {tabla_base(fila_cliente)}
+            <p style="margin:16px 0 0">Quedamos a la orden para cualquier consulta.</p>{pie}'''
+        )
+
+    if estatus == 'pagos_atrasados':
+        return (
+            f'Recordatorio de pago pendiente — {proyecto}',
+            f'''{titulo("Cliente con pagos atrasados")}
+            <p style="margin:0 0 10px">Saludos,</p>
+            <p style="margin:0 0 10px">Le informamos que el cliente <b>{cliente_nombre}</b>, correspondiente a la unidad <b>{unidad}</b>, presenta pagos pendientes según el plan establecido.</p>
+            <p style="margin:0 0 10px">Agradecemos gestionar este caso a la mayor brevedad para evitar afectar el proceso de compra.</p>
+            {tabla_base(fila_cliente)}
+            <p style="margin:16px 0 0">Quedamos a la orden para cualquier consulta.</p>{pie}'''
+        )
+
+    if estatus == 'contra_entrega':
+        return (
+            f'Pago de contra entrega recibido — {proyecto}',
+            f'''{titulo("Contra entrega")}
+            <p style="margin:0 0 10px">Saludos,</p>
+            <p style="margin:0 0 10px">Le informamos que hemos recibido el pago correspondiente a la <b>contra entrega</b> de la unidad <b>{unidad}</b>, a nombre del cliente <b>{cliente_nombre}</b>.</p>
+            <p style="margin:0 0 10px">Una vez contabilidad aplique el pago, estaremos remitiendo el recibo correspondiente.</p>
+            {tabla_base(fila_cliente)}
+            <p style="margin:16px 0 0">Quedamos a la orden para cualquier consulta.</p>{pie}'''
+        )
+
+    if estatus == 'vendida':
+        return (
+            f'Gracias por su compra — {proyecto}',
+            f'''{titulo("Unidad vendida")}
+            <p style="margin:0 0 10px">Saludos,</p>
+            <p style="margin:0 0 10px">Le informamos que la unidad <b>{unidad}</b>, correspondiente al cliente <b>{cliente_nombre}</b>, ha sido entregada satisfactoriamente.</p>
+            <p style="margin:0 0 10px">Agradecemos la confianza depositada en nosotros. Quedamos a la orden para cualquier información relacionada con su garantía o proceso postventa.</p>
+            {tabla_base(fila_cliente)}
+            {pie}'''
+        )
+
+    if estatus == 'desvinculado':
+        return (
+            f'Cliente desvinculado — {proyecto}',
+            f'''{titulo("Cliente desvinculado")}
+            <p style="margin:0 0 10px">Saludos,</p>
+            <p style="margin:0 0 10px">Le informamos que el cliente <b>{cliente_nombre}</b>, correspondiente a la unidad <b>{unidad}</b>, ha sido desvinculado del proceso de compra.</p>
+            <p style="margin:0 0 10px">La unidad queda disponible conforme a las condiciones del proyecto.</p>
+            {tabla_base(fila_cliente)}
+            <p style="margin:16px 0 0">Quedamos a la orden para cualquier consulta.</p>{pie}'''
+        )
+
+    # Fallback genérico
+    return (
         f'Actualización de estatus — {unidad}',
-        f'''
-        <h3 style="color:#1a5276;margin-top:0">Actualización de estatus de unidad</h3>
-        <table style="width:100%;border-collapse:collapse">
-          <tr><td style="padding:6px 0;color:#666">Unidad</td><td style="padding:6px 0;font-weight:500">{unidad}</td></tr>
-          <tr><td style="padding:6px 0;color:#666">Proyecto</td><td style="padding:6px 0;font-weight:500">{proyecto}</td></tr>
-          <tr><td style="padding:6px 0;color:#666">Inmobiliaria</td><td style="padding:6px 0;font-weight:500">{inmo_nombre}</td></tr>
-          {fila_cliente}
-          {fila_anterior}
-          {fila_nuevo}
-        </table>
-        ''',
+        f'''{titulo("Actualización de estatus")}
+        {tabla_base(fila_cliente)}
+        <p style="margin:16px 0 0">Nuevo estatus: <b>{estatus}</b></p>{pie}'''
     )
 
 

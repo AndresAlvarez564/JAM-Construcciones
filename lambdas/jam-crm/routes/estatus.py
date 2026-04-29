@@ -20,11 +20,13 @@ CRM_LAMBDA_ARN = os.environ.get('CRM_LAMBDA_ARN', '')
 DIAS_SEPARACION = 30
 
 TRANSICIONES = {
-    'captacion':  ['reserva', 'desvinculado'],
-    'reserva':    ['separacion', 'desvinculado'],
-    'separacion': ['inicial', 'desvinculado'],
-    'inicial':    ['vendida', 'desvinculado'],
-    'vendida':    [],
+    'captacion':       ['reserva', 'desvinculado'],
+    'reserva':         ['separacion', 'desvinculado'],
+    'separacion':      ['inicial', 'pagos_atrasados', 'desvinculado'],
+    'inicial':         ['pagos_atrasados', 'contra_entrega', 'desvinculado'],
+    'pagos_atrasados': ['inicial', 'contra_entrega', 'desvinculado'],
+    'contra_entrega':  ['vendida', 'desvinculado'],
+    'vendida':         [],
 }
 
 
@@ -201,6 +203,20 @@ def listar_todos_procesos(event):
     next_token = qs.get('next_token')
     limit = min(int(qs.get('limit', 100)), 200)
 
+    # Si el caller es inmobiliaria, forzar filtro por su propio id
+    from utils.auth import get_rol, get_claims
+    if get_rol(event) == 'inmobiliaria':
+        claims = get_claims(event)
+        sub = claims.get('sub', '')
+        # Obtener inmobiliaria_id del usuario
+        try:
+            usuarios_table = dynamodb.Table(os.environ['USUARIOS_TABLE'])
+            u = usuarios_table.get_item(Key={'pk': f'USUARIO#{sub}', 'sk': 'METADATA'}).get('Item', {})
+            inmo_id_raw = u.get('inmobiliaria_id', sub)
+            inmobiliaria_id = inmo_id_raw.replace('INMOBILIARIA#', '')
+        except Exception:
+            inmobiliaria_id = sub
+
     if proyecto_id:
         kwargs = {
             'IndexName': 'gsi-proyecto-procesos',
@@ -257,6 +273,32 @@ def listar_todos_procesos(event):
             except Exception:
                 cache[key] = {}
         item['cliente'] = cache[key]
+
+    # Enriquecer con estado actual de la unidad en inventario (batch get)
+    unidad_keys = [
+        {'pk': f'PROYECTO#{item["proyecto_id"]}', 'sk': f'UNIDAD#{item["unidad_id"]}'}
+        for item in items
+        if item.get('proyecto_id') and item.get('unidad_id')
+    ]
+    estado_unidad_map = {}
+    try:
+        for i in range(0, len(unidad_keys), 100):
+            batch = inventario_table.meta.client.batch_get_item(
+                RequestItems={inventario_table.name: {'Keys': unidad_keys[i:i+100], 'ProjectionExpression': 'pk, sk, estado, fecha_liberacion'}}
+            )
+            for u in batch.get('Responses', {}).get(inventario_table.name, []):
+                uid = u['sk'].replace('UNIDAD#', '')
+                estado_unidad_map[uid] = {
+                    'estado_unidad': u.get('estado', ''),
+                    'fecha_liberacion_unidad': u.get('fecha_liberacion'),
+                }
+    except Exception:
+        pass  # No crítico — el frontend muestra solo el estatus del proceso
+    for item in items:
+        uid = item.get('unidad_id', '')
+        info = estado_unidad_map.get(uid, {})
+        item['estado_unidad'] = info.get('estado_unidad', '')
+        item['fecha_liberacion_unidad'] = info.get('fecha_liberacion_unidad')
 
     resp = {'items': items}
     if result.get('LastEvaluatedKey'):
@@ -359,20 +401,23 @@ def cambiar_estatus(event, cedula, proyecto_id, unidad_id):
             proceso.get('unidad_nombre', unidad_id)
         )
     elif nuevo_estatus == 'inicial':
-        # Pago confirmado manualmente — cancelar alerta y marcar
+        # Contrato firmado — cancelar alerta de separación y marcar pago confirmado
         _cancelar_alerta_separacion(cedula, unidad_id)
         procesos_table.update_item(
             Key={'pk': pk, 'sk': sk},
             UpdateExpression='SET pago_confirmado = :v',
             ExpressionAttributeValues={':v': True},
         )
-        _actualizar_unidad(proyecto_id, unidad_id, 'vendida')
+        # La unidad sigue no_disponible hasta contra_entrega/vendida
+    elif nuevo_estatus in ('pagos_atrasados', 'contra_entrega'):
+        # No cambia el estado de la unidad en inventario
+        pass
     elif nuevo_estatus == 'vendida':
         # Cierre definitivo de venta
         _actualizar_unidad(proyecto_id, unidad_id, 'vendida')
     elif nuevo_estatus == 'desvinculado':
         # Si venía de separacion, cancelar la alerta también
-        if estatus_actual == 'separacion':
+        if estatus_actual in ('separacion', 'pagos_atrasados', 'contra_entrega'):
             _cancelar_alerta_separacion(cedula, unidad_id)
         _actualizar_unidad(proyecto_id, unidad_id, 'disponible')
 
@@ -396,6 +441,7 @@ def cambiar_estatus(event, cedula, proyecto_id, unidad_id):
             'telefono': cliente.get('telefono'),
             'nombres': cliente.get('nombres'),
             'apellidos': cliente.get('apellidos'),
+            'unidad_nombre': proceso.get('unidad_nombre', unidad_id),
             'timestamp': ahora,
         }, ensure_ascii=False),
     )

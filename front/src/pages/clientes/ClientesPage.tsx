@@ -18,7 +18,7 @@ import { getInmobiliarias } from '../../services/inmobiliarias.service';
 import type { Inmobiliaria } from '../../services/inmobiliarias.service';
 import { useAuthContext } from '../../context/AuthContext';
 import type { Cliente, Proyecto, Proceso } from '../../types';
-import CambiarEstatusModal from '../../components/common/CambiarEstatusModal';
+import CambiarEstatusModal, { type ModoNotificacion } from '../../components/common/CambiarEstatusModal';
 import HistorialEstatusDrawer from '../../components/common/HistorialEstatusDrawer';
 
 const { Title, Text } = Typography;
@@ -190,7 +190,7 @@ const ClientesPage = () => {
     } catch { message.error('Error al actualizar'); }
   };
 
-  const handleCambiarEstatus = async (estatus: string, notificar: boolean) => {
+  const handleCambiarEstatus = async (estatus: string, notificar: ModoNotificacion) => {
     if (!estatusModal || !estatusCliente) return;
     try {
       await cambiarEstatus(estatusCliente.cedula, estatusModal.proyecto_id, estatusModal.unidad_id,

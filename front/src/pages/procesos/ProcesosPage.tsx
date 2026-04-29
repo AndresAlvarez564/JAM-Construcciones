@@ -5,17 +5,18 @@ import {
 } from 'antd';
 import {
   ReloadOutlined, SwapOutlined, HistoryOutlined,
-  SearchOutlined, MoreOutlined, UserOutlined,
+  SearchOutlined, MoreOutlined, UserOutlined, LockOutlined,
 } from '@ant-design/icons';
 import dayjs from 'dayjs';
-import { listarTodosProcesos, cambiarEstatus, type ProcesoEnriquecido } from '../../services/crm.service';
+import { listarTodosProcesos, cambiarEstatus, getMisProcesos, type ProcesoEnriquecido } from '../../services/crm.service';
 import { getProyectos } from '../../services/proyectos.service';
 import { getInmobiliarias } from '../../services/inmobiliarias.service';
 import type { Inmobiliaria } from '../../services/inmobiliarias.service';
 import type { Proyecto, Proceso } from '../../types';
-import CambiarEstatusModal from '../../components/common/CambiarEstatusModal';
+import CambiarEstatusModal, { type ModoNotificacion } from '../../components/common/CambiarEstatusModal';
 import HistorialEstatusDrawer from '../../components/common/HistorialEstatusDrawer';
 import { ESTADO_PROCESO_COLOR, ESTADO_PROCESO_LABEL } from '../../constants/estados';
+import { useAuthContext } from '../../context/AuthContext';
 
 const { Title, Text } = Typography;
 const { useBreakpoint } = Grid;
@@ -25,6 +26,9 @@ const ESTADOS_ACTIVOS = ['captacion', 'reserva', 'separacion', 'inicial'];
 const ProcesosPage = () => {
   const screens = useBreakpoint();
   const isMobile = !screens.md;
+
+  const { usuario } = useAuthContext();
+  const esInmobiliaria = usuario?.rol === 'inmobiliaria';
 
   const [procesos, setProcesos] = useState<ProcesoEnriquecido[]>([]);
   const [nextToken, setNextToken] = useState<string | undefined>();
@@ -52,25 +56,34 @@ const ProcesosPage = () => {
     const tab = opts.tab ?? tabActiva;
     setLoading(true);
     try {
-      const data = await listarTodosProcesos({
-        proyecto_id: opts.proyecto ?? proyectoFiltro,
-        inmobiliaria_id: opts.inmo ?? inmoFiltro,
-        estado: opts.estado ?? estadoFiltro,
-        incluir_cerrados: tab === 'cerrados',
-        next_token: opts.token,
-      });
-      setProcesos(prev => opts.token ? [...prev, ...data.items] : data.items);
-      setNextToken(data.next_token);
+      if (esInmobiliaria) {
+        // La inmobiliaria usa su propio endpoint que devuelve todos sus procesos
+        const items = await getMisProcesos(opts.proyecto ?? proyectoFiltro);
+        setProcesos(items as ProcesoEnriquecido[]);
+        setNextToken(undefined);
+      } else {
+        const data = await listarTodosProcesos({
+          proyecto_id: opts.proyecto ?? proyectoFiltro,
+          inmobiliaria_id: opts.inmo ?? inmoFiltro,
+          estado: opts.estado ?? estadoFiltro,
+          incluir_cerrados: tab === 'cerrados',
+          next_token: opts.token,
+        });
+        setProcesos(prev => opts.token ? [...prev, ...data.items] : data.items);
+        setNextToken(data.next_token);
+      }
     } catch {
       message.error('Error al cargar procesos');
     } finally {
       setLoading(false);
     }
-  }, [tabActiva, proyectoFiltro, inmoFiltro, estadoFiltro]);
+  }, [tabActiva, proyectoFiltro, inmoFiltro, estadoFiltro, esInmobiliaria]);
 
   useEffect(() => {
     getProyectos().then(setProyectos).catch(() => {});
-    getInmobiliarias().then(setInmobiliarias).catch(() => {});
+    if (!esInmobiliaria) {
+      getInmobiliarias().then(setInmobiliarias).catch(() => {});
+    }
     cargar();
   }, []);
 
@@ -87,7 +100,7 @@ const ProcesosPage = () => {
   const nombreCliente = (p: ProcesoEnriquecido) =>
     p.cliente?.nombres ? `${p.cliente.nombres} ${p.cliente.apellidos}` : p.cedula;
 
-  const handleCambiarEstatus = async (estatus: string, notificar: boolean) => {
+  const handleCambiarEstatus = async (estatus: string, notificar: ModoNotificacion) => {
     if (!estatusModal) return;
     try {
       await cambiarEstatus(
@@ -106,7 +119,7 @@ const ProcesosPage = () => {
       } catch {
         message.error('Error al cambiar estatus');
       }
-      throw err; // para que CambiarEstatusModal no cierre el loading
+      throw err;
     }
   };
 
@@ -157,8 +170,22 @@ const ProcesosPage = () => {
     );
   };
 
+  const renderTagUnidad = (p: ProcesoEnriquecido) => {
+    if (p.estado_unidad !== 'bloqueada') return null;
+    const vence = p.fecha_liberacion_unidad
+      ? dayjs(p.fecha_liberacion_unidad).format('DD/MM HH:mm')
+      : null;
+    return (
+      <Tooltip title={vence ? `Bloqueo vence: ${vence}` : 'Unidad bloqueada'}>
+        <Tag icon={<LockOutlined />} color="warning" style={{ margin: 0 }}>
+          Bloqueada
+        </Tag>
+      </Tooltip>
+    );
+  };
+
   const renderTarjeta = (p: ProcesoEnriquecido) => {
-    const puedeAvanzar = p.estado !== 'vendida' && p.estado !== 'desvinculado';
+    const puedeAvanzar = !esInmobiliaria && p.estado !== 'vendida' && p.estado !== 'desvinculado';
     const menuItems = [
       ...(puedeAvanzar ? [{ key: 'estatus', icon: <SwapOutlined />, label: 'Cambiar estatus', onClick: () => setEstatusModal(p) }] : []),
       { key: 'historial', icon: <HistoryOutlined />, label: 'Ver historial', onClick: () => { setHistorialProceso(p); setHistorialNombre(nombreCliente(p)); } },
@@ -181,6 +208,7 @@ const ProcesosPage = () => {
               <Tag color={ESTADO_PROCESO_COLOR[p.estado]} style={{ margin: 0 }}>
                 {ESTADO_PROCESO_LABEL[p.estado] ?? p.estado}
               </Tag>
+              {renderTagUnidad(p)}
             </Space>
             <div style={{ marginTop: 6, display: 'flex', gap: 12, flexWrap: 'wrap' }}>
               <Text type="secondary" style={{ fontSize: 11 }}>{proyectoNombre(p.proyecto_id)}</Text>
@@ -198,10 +226,11 @@ const ProcesosPage = () => {
 
   const renderFila = (p: ProcesoEnriquecido) => {
     const { vencida, proxima } = alertaInfo(p);
-    const puedeAvanzar = p.estado !== 'vendida' && p.estado !== 'desvinculado';
+    const puedeAvanzar = !esInmobiliaria && p.estado !== 'vendida' && p.estado !== 'desvinculado';
     return (
       <div key={`${p.pk}#${p.sk}`} style={{
-        display: 'grid', gridTemplateColumns: '2fr 1.2fr 1fr 1.2fr 1.2fr 80px',
+        display: 'grid',
+        gridTemplateColumns: esInmobiliaria ? '2fr 1.2fr 1.6fr 1.2fr 80px' : '2fr 1.2fr 1.6fr 1.2fr 1.2fr 80px',
         alignItems: 'center', padding: '12px 14px',
         background: '#fff', borderRadius: 8, marginBottom: 4,
         borderTop: '1px solid #f0f0f0', borderRight: '1px solid #f0f0f0', borderBottom: '1px solid #f0f0f0',
@@ -216,13 +245,16 @@ const ProcesosPage = () => {
         <Badge
           status={vencida ? 'error' : proxima ? 'warning' : 'default'}
           text={
-            <Tag color={ESTADO_PROCESO_COLOR[p.estado]} style={{ margin: 0 }}>
-              {ESTADO_PROCESO_LABEL[p.estado] ?? p.estado}
-            </Tag>
+            <Space size={4}>
+              <Tag color={ESTADO_PROCESO_COLOR[p.estado]} style={{ margin: 0 }}>
+                {ESTADO_PROCESO_LABEL[p.estado] ?? p.estado}
+              </Tag>
+              {renderTagUnidad(p)}
+            </Space>
           }
         />
         <Text style={{ fontSize: 12 }}>{proyectoNombre(p.proyecto_id)}</Text>
-        <Text style={{ fontSize: 12 }}>{inmoNombre(p.inmobiliaria_id)}</Text>
+        {!esInmobiliaria && <Text style={{ fontSize: 12 }}>{inmoNombre(p.inmobiliaria_id)}</Text>}
         <div style={{ display: 'flex', gap: 4, justifyContent: 'flex-end' }}>
           {puedeAvanzar && (
             <Tooltip title="Cambiar estatus">
@@ -241,12 +273,13 @@ const ProcesosPage = () => {
     <div>
       {!isMobile && lista.length > 0 && (
         <div style={{
-          display: 'grid', gridTemplateColumns: '2fr 1.2fr 1fr 1.2fr 1.2fr 80px',
+          display: 'grid',
+          gridTemplateColumns: esInmobiliaria ? '2fr 1.2fr 1.6fr 1.2fr 80px' : '2fr 1.2fr 1.6fr 1.2fr 1.2fr 80px',
           padding: '8px 14px', background: '#fafafa', borderRadius: 8,
           marginBottom: 4, fontSize: 11, color: '#8c8c8c', fontWeight: 600, letterSpacing: 0.5,
         }}>
           <span>CLIENTE</span><span>UNIDAD</span><span>ESTATUS</span>
-          <span>PROYECTO</span><span>INMOBILIARIA</span><span />
+          <span>PROYECTO</span>{!esInmobiliaria && <span>INMOBILIARIA</span>}<span />
         </div>
       )}
       {lista.length === 0 && !loading && (
@@ -273,7 +306,6 @@ const ProcesosPage = () => {
         </Button>
       </div>
 
-      {/* Filtros */}
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 16 }}>
         <Input
           prefix={<SearchOutlined />}
@@ -294,17 +326,19 @@ const ProcesosPage = () => {
             cargar({ proyecto: v });
           }}
         />
-        <Select
-          allowClear placeholder="Inmobiliaria"
-          style={{ width: isMobile ? '100%' : 180 }}
-          value={inmoFiltro}
-          options={inmobiliarias.map(i => ({ value: i.pk, label: i.nombre }))}
-          onChange={v => {
-            setInmoFiltro(v);
-            setNextToken(undefined);
-            cargar({ inmo: v });
-          }}
-        />
+        {!esInmobiliaria && (
+          <Select
+            allowClear placeholder="Inmobiliaria"
+            style={{ width: isMobile ? '100%' : 180 }}
+            value={inmoFiltro}
+            options={inmobiliarias.map(i => ({ value: i.pk, label: i.nombre }))}
+            onChange={v => {
+              setInmoFiltro(v);
+              setNextToken(undefined);
+              cargar({ inmo: v });
+            }}
+          />
+        )}
         <Select
           allowClear placeholder="Estatus"
           style={{ width: isMobile ? '100%' : 150 }}
@@ -335,7 +369,7 @@ const ProcesosPage = () => {
           },
           {
             key: 'cerrados',
-            label: `Cerrados (${procesosCerrados.length})`,
+            label: 'Cerrados',
             children: renderTabla(procesosCerrados),
           },
         ]}
