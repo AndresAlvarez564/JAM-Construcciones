@@ -26,6 +26,8 @@ export default function LoginPage() {
   const [forgotUser, setForgotUser] = useState('');
   const [forgotCode, setForgotCode] = useState('');
   const [newPassword, setNewPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [showNewPassword, setShowNewPassword] = useState(false);
 
   const setErr = (msg: string) => { setError(msg); setLoading(false); };
 
@@ -151,8 +153,24 @@ export default function LoginPage() {
               <input style={s.input} placeholder="Tu nombre de usuario" value={username}
                 onChange={e => setUsername(e.target.value)} autoComplete="username" required />
               <label style={s.label}>Contraseña</label>
-              <input style={s.input} type="password" placeholder="••••••••" value={password}
-                onChange={e => setPassword(e.target.value)} autoComplete="current-password" required />
+              <div style={s.inputWrap}>
+                <input style={{ ...s.input, marginBottom: 0, paddingRight: 42 }} type={showPassword ? 'text' : 'password'} placeholder="••••••••" value={password}
+                  onChange={e => setPassword(e.target.value)} autoComplete="current-password" required />
+                <button type="button" style={s.eyeBtn} onClick={() => setShowPassword(v => !v)} tabIndex={-1} aria-label={showPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'}>
+                  {showPassword ? (
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/>
+                      <path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/>
+                      <line x1="1" y1="1" x2="23" y2="23"/>
+                    </svg>
+                  ) : (
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+                      <circle cx="12" cy="12" r="3"/>
+                    </svg>
+                  )}
+                </button>
+              </div>
               <button style={{ ...s.btn, ...(loading ? s.btnDisabled : {}) }} type="submit" disabled={loading}>
                 {loading ? <span style={s.spinner} /> : null}
                 {loading ? 'Ingresando...' : 'Ingresar'}
@@ -214,8 +232,24 @@ export default function LoginPage() {
               <input style={s.input} placeholder="Código recibido por correo" value={forgotCode}
                 onChange={e => setForgotCode(e.target.value)} maxLength={6} required />
               <label style={s.label}>Nueva contraseña</label>
-              <input style={s.input} type="password" placeholder="••••••••" value={newPassword}
-                onChange={e => setNewPassword(e.target.value)} required />
+              <div style={s.inputWrap}>
+                <input style={{ ...s.input, marginBottom: 0, paddingRight: 42 }} type={showNewPassword ? 'text' : 'password'} placeholder="••••••••" value={newPassword}
+                  onChange={e => setNewPassword(e.target.value)} required />
+                <button type="button" style={s.eyeBtn} onClick={() => setShowNewPassword(v => !v)} tabIndex={-1} aria-label={showNewPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'}>
+                  {showNewPassword ? (
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/>
+                      <path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/>
+                      <line x1="1" y1="1" x2="23" y2="23"/>
+                    </svg>
+                  ) : (
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+                      <circle cx="12" cy="12" r="3"/>
+                    </svg>
+                  )}
+                </button>
+              </div>
               <button style={{ ...s.btn, ...(loading ? s.btnDisabled : {}) }} type="submit" disabled={loading}>
                 {loading ? 'Cambiando...' : 'Cambiar contraseña'}
               </button>
@@ -319,5 +353,13 @@ const s: Record<string, React.CSSProperties> = {
     display: 'inline-block', width: 14, height: 14,
     border: '2px solid rgba(255,255,255,0.3)', borderTopColor: '#fff',
     borderRadius: '50%', animation: 'spin 0.7s linear infinite',
+  },
+  inputWrap: {
+    position: 'relative', display: 'flex', alignItems: 'center', marginBottom: 16,
+  },
+  eyeBtn: {
+    position: 'absolute', right: 10, background: 'none', border: 'none',
+    cursor: 'pointer', fontSize: 16, padding: '0 4px', lineHeight: 1,
+    color: '#6b7280', display: 'flex', alignItems: 'center',
   },
 };

@@ -3,7 +3,7 @@ import { fetchAuthSession } from 'aws-amplify/auth';
 
 const API_NAME = 'JamApi';
 
-const authHeaders = async () => {
+const authHeaders = async (): Promise<Record<string, string>> => {
   try {
     const session = await fetchAuthSession();
     const token = session.tokens?.idToken?.toString();

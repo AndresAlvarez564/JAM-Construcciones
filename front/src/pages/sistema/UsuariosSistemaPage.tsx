@@ -240,9 +240,10 @@ const UsuariosSistemaPage = () => {
               </Form.Item>
               <Form.Item
                 name="password" label="Contraseña"
-                rules={[{ required: true, message: 'Requerido' }, { min: 8, message: 'Minimo 8 caracteres' }]}
+                rules={[{ required: true, message: 'Requerido' }, { min: 8, message: 'Mínimo 8 caracteres' }]}
+                extra="Mínimo 8 caracteres, al menos 1 mayúscula, 1 número y 1 carácter especial (ej: !@#$)"
               >
-                <Input.Password placeholder="Minimo 8 caracteres, 1 mayuscula, 1 numero" />
+                <Input.Password placeholder="Ej: MiClave1!" />
               </Form.Item>
               <Form.Item
                 name="correo" label="Correo"

@@ -200,7 +200,12 @@ const ClientesPage = () => {
       if (drawerCedula) abrirDetalleCedula(drawerCedula);
       cargar(proyectoFiltro, inmoFiltro);
     } catch (err: any) {
-      message.error(err?.response?.data?.message || 'Error al cambiar estatus');
+      try {
+        const body = await err?.response?.body?.json?.();
+        message.error(body?.message || body?.error || 'Error al cambiar estatus');
+      } catch {
+        message.error('Error al cambiar estatus');
+      }
       throw err;
     }
   };
@@ -213,9 +218,16 @@ const ClientesPage = () => {
       setNextToken(undefined);
       cargar(proyectoFiltro);
     } catch (err: any) {
-      const msg = err?.response?.data?.message || err?.response?.data?.error;
-      if (err?.response?.status === 409) message.error(msg || 'Este cliente tiene exclusividad activa en este proyecto.');
-      else message.error(msg || 'Error al registrar cliente');
+      const status = err?.response?.status ?? err?.response?.statusCode;
+      try {
+        const body = await err?.response?.body?.json?.();
+        const msg = body?.message || body?.error;
+        if (status === 409) message.error(msg || 'Este cliente tiene exclusividad activa en este proyecto.');
+        else message.error(msg || 'Error al registrar cliente');
+      } catch {
+        if (status === 409) message.error('Este cliente tiene exclusividad activa en este proyecto.');
+        else message.error('Error al registrar cliente');
+      }
     }
   };
 

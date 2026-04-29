@@ -156,10 +156,10 @@ export function useInventario() {
     const payload = {
       id_unidad: values.id_unidad,
       etapa_id: values.etapa_id,
-      metraje: values.metraje != null ? parseFloat(values.metraje) : undefined,
+      metraje: values.metraje != null ? parseFloat(values.metraje) : 0,
       metraje_terraza: values.metraje_terraza != null ? parseFloat(values.metraje_terraza) : undefined,
       metraje_patio: values.metraje_patio != null ? parseFloat(values.metraje_patio) : undefined,
-      precio: values.precio != null ? parseFloat(values.precio) : undefined,
+      precio: values.precio != null ? parseFloat(values.precio) : 0,
       precio_reserva: values.precio_reserva != null ? parseFloat(values.precio_reserva) : undefined,
       precio_separacion: values.precio_separacion != null ? parseFloat(values.precio_separacion) : undefined,
       precio_inicial: values.precio_inicial != null ? parseFloat(values.precio_inicial) : undefined,

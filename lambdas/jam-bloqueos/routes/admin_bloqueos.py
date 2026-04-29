@@ -105,11 +105,17 @@ def extender(proyecto_id, unidad_id, event):
         return bad_request('proyecto_id requerido (query param)')
 
     body = json.loads(event.get('body') or '{}')
-    horas = body.get('horas_extra', 24)
+    horas_restantes = body.get('horas_restantes')  # Tiempo restante total que quiere
     justificacion = body.get('justificacion', '')
 
+    if horas_restantes is None:
+        return bad_request('horas_restantes es requerido')
+    
     if not justificacion:
         return bad_request('justificacion es requerida')
+
+    if horas_restantes < 0.02:  # Mínimo ~1 minuto
+        return bad_request('El tiempo restante debe ser al menos 1 minuto (0.02 horas)')
 
     unidad = _get_unidad_bloqueada(proyecto_id, unidad_id)
     if not unidad:
@@ -119,15 +125,19 @@ def extender(proyecto_id, unidad_id, event):
     admin_id = claims.get('sub', 'admin')
     admin_nombre = _get_nombre_usuario(admin_id)
 
-    fecha_lib_actual = unidad.get('fecha_liberacion', datetime.now(timezone.utc).isoformat())
     fecha_bloqueo = unidad.get('fecha_bloqueo', '')
-    try:
-        dt_lib = datetime.fromisoformat(fecha_lib_actual.replace('Z', '+00:00'))
-    except ValueError:
-        dt_lib = datetime.now(timezone.utc)
-
-    nueva_lib = (dt_lib + timedelta(hours=horas)).isoformat()
-    nueva_alerta = (dt_lib + timedelta(hours=horas) - timedelta(hours=5)).isoformat()
+    ahora = datetime.now(timezone.utc)
+    
+    # Calcular nueva fecha de liberación basada en tiempo restante
+    nueva_dt_lib = ahora + timedelta(hours=horas_restantes)
+    nueva_lib = nueva_dt_lib.isoformat()
+    
+    # Alerta 5 horas antes, pero si el tiempo restante es menor a 5h, poner alerta en 1 minuto
+    if horas_restantes <= 5:
+        nueva_alerta_dt = ahora + timedelta(minutes=1)
+    else:
+        nueva_alerta_dt = nueva_dt_lib - timedelta(hours=5)
+    nueva_alerta = nueva_alerta_dt.isoformat()
 
     inventario.update_item(
         Key={'pk': f'PROYECTO#{proyecto_id}', 'sk': f'UNIDAD#{unidad_id}'},
@@ -139,11 +149,11 @@ def extender(proyecto_id, unidad_id, event):
     sched.eliminar_schedules(unidad_id)
     sched.crear_schedules(unidad_id, proyecto_id, nueva_lib[:19], nueva_alerta[:19])
 
-    # Registrar extensión en historial
+    # Registrar modificación en historial
     extension = {
-        'horas': horas,
+        'horas_restantes': horas_restantes,
         'justificacion': justificacion,
-        'extendido_por': admin_nombre,
+        'modificado_por': admin_nombre,
         'timestamp': datetime.now(timezone.utc).isoformat(),
         'nueva_fecha_liberacion': nueva_lib,
     }
@@ -157,9 +167,10 @@ def extender(proyecto_id, unidad_id, event):
         pass
 
     return ok({
-        'message': 'Bloqueo extendido',
+        'message': 'Tiempo de bloqueo actualizado',
         'unidad_id': unidad_id,
         'nueva_fecha_liberacion': nueva_lib,
-        'extendido_por': admin_id,
+        'modificado_por': admin_id,
         'justificacion': justificacion,
+        'horas_restantes': horas_restantes,
     })

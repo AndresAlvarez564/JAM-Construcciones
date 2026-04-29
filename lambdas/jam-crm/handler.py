@@ -1,4 +1,4 @@
-from utils.auth import require_admin
+from utils.auth import require_admin, get_rol
 from utils.response import forbidden, not_found, bad_request
 from routes import estatus as estatus_routes
 from routes import analytics as analytics_routes
@@ -17,12 +17,16 @@ def handler(event, context):
     proyecto_id = path_params.get('proyecto_id')
     unidad_id = path_params.get('unidad_id')
 
-    if not require_admin(event):
-        return forbidden()
+    rol = get_rol(event)
+    es_admin = require_admin(event)
 
-    # GET /admin/analytics
+    # GET /admin/analytics — accesible para internos e inmobiliaria (solo sus proyectos)
     if method == 'GET' and path.endswith('/analytics'):
         return analytics_routes.get_analytics(event)
+
+    # El resto de endpoints solo para admin/coordinador/supervisor
+    if not es_admin:
+        return forbidden()
 
     # GET /admin/clientes/{cedula}/procesos
     if method == 'GET' and cedula and path.endswith('/procesos'):

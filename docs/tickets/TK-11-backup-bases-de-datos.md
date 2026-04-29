@@ -2,52 +2,70 @@
 
 ## Objetivo
 
-Salvaguardar los datos del sistema ante cualquier desastre que afecte el negocio, garantizando recuperación ante fallos, eliminaciones accidentales o corrupción de datos.
-
----
-
-## Alcance
-
-- Habilitar Point-in-Time Recovery (PITR) en todas las tablas DynamoDB
-- Configurar backups automáticos programados
-- Documentar el proceso de restauración
-- Verificar que `RemovalPolicy.RETAIN` está activo en todas las tablas
-
----
-
-## Tablas a proteger
-
-| Tabla | Datos críticos |
-|-------|---------------|
-| `jam-usuarios` | Usuarios, inmobiliarias, roles |
-| `jam-inventario` | Proyectos, etapas, torres, unidades |
-| `jam-clientes` | Perfiles de clientes y exclusividades |
-| `jam-procesos` | Procesos de venta activos e históricos |
-| `jam-historial-bloqueos` | Trazabilidad de bloqueos |
+Recuperación ante desastres — falla de región AWS, tabla eliminada a nivel de infraestructura, o corrupción total de datos. No cubre errores de usuario (borrado desde la app es responsabilidad del operador).
 
 ---
 
 ## Implementación
 
-### PITR (Point-in-Time Recovery)
-Permite restaurar cualquier tabla a cualquier punto en los últimos 35 días. Se habilita en CDK con `pointInTimeRecovery: true` en cada tabla.
+### AWS Backup — snapshots diarios a S3
 
-### Backups automáticos
-AWS Backup puede programar snapshots diarios con retención configurable (ej: 30 días).
+Snapshot completo de cada tabla cada día a las **12:00am hora RD (4:00am UTC)**. Los snapshots se almacenan en `jam-backup-vault` con retención de **30 días**. Los datos van a S3 con redundancia multi-AZ, completamente independiente de DynamoDB.
+
+`RemovalPolicy.RETAIN` en todas las tablas — si se hace `cdk destroy`, las tablas no se eliminan.
+
+### Tablas protegidas
+
+| Tabla | Snapshot diario | RemovalPolicy |
+|-------|----------------|---------------|
+| `jam-usuarios` | ✅ | RETAIN |
+| `jam-inventario` | ✅ | RETAIN |
+| `jam-clientes` | ✅ | RETAIN |
+| `jam-procesos` | ✅ | RETAIN |
+| `jam-historial-estatus` | ✅ | RETAIN |
+| `jam-historial-bloqueos` | ✅ | RETAIN |
+
+---
+
+## Proceso de restauración ante desastre
+
+1. Ir a consola AWS → **AWS Backup** → Backup vaults → `jam-backup-vault`
+2. Seleccionar el recovery point del día deseado (hay uno por día, últimos 30)
+3. Click "Restore" → asignar nombre a la tabla destino, ej: `jam-clientes-restored`
+4. Esperar la restauración (minutos según tamaño)
+5. Verificar los datos en la tabla restaurada
+6. Actualizar la variable de entorno de cada lambda afectada para apuntar a la tabla restaurada
+
+### Lambdas a actualizar por tabla
+
+| Tabla restaurada | Lambdas a actualizar |
+|-----------------|---------------------|
+| `jam-usuarios` | `jam-auth`, `jam-bloqueos`, `jam-captacion` |
+| `jam-inventario` | `jam-proyectos`, `jam-bloqueos`, `jam-crm`, `jam-captacion` |
+| `jam-clientes` | `jam-captacion`, `jam-bloqueos`, `jam-crm` |
+| `jam-procesos` | `jam-captacion`, `jam-crm` |
+| `jam-historial-bloqueos` | `jam-bloqueos` |
+| `jam-historial-estatus` | (reservada) |
+
+> AWS siempre crea una tabla nueva al restaurar — nunca sobreescribe la original. Las lambdas deben apuntarse manualmente a la tabla restaurada o hacer `cdk deploy` con el nombre actualizado.
+
+---
+
+## Costos estimados
+
+Con ~500 MB de datos totales:
+
+| Concepto | Costo estimado/mes |
+|----------|-------------------|
+| AWS Backup (30 snapshots × 500MB) | ~$1.50 |
 
 ---
 
 ## Criterios de aceptación
 
-- [ ] PITR habilitado en todas las tablas DynamoDB
-- [ ] `RemovalPolicy.RETAIN` confirmado en todas las tablas
-- [ ] Proceso de restauración documentado
-- [ ] Backup automático programado
-
----
-
-## Notas técnicas
-
-- PITR no tiene costo adicional significativo para el volumen de JAM
-- La restauración crea una tabla nueva — hay que actualizar las variables de entorno de las lambdas si se restaura
-- Depende de: infraestructura base (TK-01 al TK-10)
+- [x] AWS Backup plan diario a las 12am RD (4am UTC) con retención 30 días
+- [x] Vault `jam-backup-vault` con `RemovalPolicy.RETAIN`
+- [x] `RemovalPolicy.RETAIN` en todas las tablas
+- [x] Proceso de restauración documentado
+- [ ] Hacer `cdk deploy` para aplicar los cambios en AWS
+- [ ] Verificar que el primer backup se ejecuta correctamente

@@ -104,6 +104,8 @@ export interface Bloqueo {
   fecha_liberacion: string;
   tiempo_restante?: number;
   estado: string;
+  cliente_cedula?: string;
+  cliente_nombre?: string;
 }
 
 export type EstadoCliente = 'captacion' | 'reserva' | 'separacion' | 'inicial' | 'desvinculado';

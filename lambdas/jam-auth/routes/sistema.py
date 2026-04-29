@@ -101,8 +101,12 @@ def crear(event):
     except ClientError as e:
         code = e.response['Error']['Code']
         if code == 'UsernameExistsException':
-            return _build(409, {'message': 'El nombre de usuario ya existe'})
-        return _build(500, {'message': f'Error al crear usuario: {code}'})
+            return _build(409, {'message': f'El nombre de usuario "{username}" ya está en uso, elige otro'})
+        if code == 'InvalidPasswordException':
+            return _build(400, {'message': 'La contraseña no cumple los requisitos: mínimo 8 caracteres, una mayúscula y un número'})
+        if code == 'InvalidParameterException':
+            return _build(400, {'message': f'Parámetro inválido: {e.response["Error"]["Message"]}'})
+        return _build(500, {'message': f'Error al crear usuario en Cognito: {code}'})
 
 
 def actualizar(usuario_id, event):

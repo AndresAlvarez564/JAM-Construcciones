@@ -46,13 +46,14 @@ def listar(proyecto_id, event, rol):
     if qs.get('piso'):
         items = [i for i in items if str(i.get('piso', '')) == qs['piso']]
 
-    # Filtrar y ocultar campos para inmobiliaria
+    # Filtrar y ocultar campos internos (solo JAM) para inmobiliaria
     if rol == 'inmobiliaria':
         items = [i for i in items if i.get('estado') in ('disponible', 'bloqueada')]
         for item in items:
             item.pop('bloqueado_por', None)
             item.pop('cliente_id', None)
             item.pop('cliente_cedula', None)
+            item.pop('comentario', None)       # CELDA INTERNA
 
     items = [_enrich_bloqueo(i) for i in items]
     return ok(items)
@@ -70,6 +71,7 @@ def detalle(proyecto_id, unidad_id, rol):
         item.pop('bloqueado_por', None)
         item.pop('cliente_id', None)
         item.pop('cliente_cedula', None)
+        item.pop('comentario', None)       # CELDA INTERNA
 
     return ok(_enrich_bloqueo(item))
 
@@ -93,6 +95,15 @@ def crear(proyecto_id, event):
 
     unidad_id = str(uuid.uuid4())[:8].upper()
     ts = now()
+
+    # Validar que no exista otra unidad con el mismo id_unidad en este proyecto
+    existing = inventario.query(
+        KeyConditionExpression=Key('pk').eq(f'PROYECTO#{proyecto_id}') & Key('sk').begins_with('UNIDAD#')
+    )
+    for u in existing.get('Items', []):
+        if u.get('id_unidad', '').strip().upper() == id_unidad.upper():
+            return bad_request(f'Ya existe una unidad con el nombre "{id_unidad}" en este proyecto')
+
     item = {
         'pk': f'PROYECTO#{proyecto_id}',
         'sk': f'UNIDAD#{unidad_id}',
@@ -125,7 +136,15 @@ def actualizar(proyecto_id, unidad_id, event):
     updates, values, names = [], {}, {}
 
     if 'id_unidad' in body:
-        values[':id_unidad'] = body['id_unidad']
+        nuevo_id = (body['id_unidad'] or '').strip()
+        if nuevo_id:
+            existing = inventario.query(
+                KeyConditionExpression=Key('pk').eq(f'PROYECTO#{proyecto_id}') & Key('sk').begins_with('UNIDAD#')
+            )
+            for u in existing.get('Items', []):
+                if u.get('id_unidad', '').strip().upper() == nuevo_id.upper() and u.get('unidad_id') != unidad_id:
+                    return bad_request(f'Ya existe una unidad con el nombre "{nuevo_id}" en este proyecto')
+        values[':id_unidad'] = nuevo_id
         updates.append('id_unidad = :id_unidad')
 
     if 'etapa_id' in body:

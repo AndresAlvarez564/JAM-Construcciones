@@ -50,8 +50,14 @@ def login(event):
     except ClientError as e:
         code = e.response['Error']['Code']
         if code in ('NotAuthorizedException', 'UserNotFoundException'):
-            return _build(401, {'message': 'Credenciales inválidas'})
-        return _build(500, {'message': 'Error de autenticación'})
+            return _build(401, {'message': 'Usuario o contraseña incorrectos'})
+        if code == 'UserNotConfirmedException':
+            return _build(401, {'message': 'El usuario no ha sido confirmado'})
+        if code == 'PasswordResetRequiredException':
+            return _build(401, {'message': 'Se requiere restablecer la contraseña antes de iniciar sesión'})
+        if code == 'TooManyRequestsException':
+            return _build(429, {'message': 'Demasiados intentos fallidos, espera unos minutos e intenta de nuevo'})
+        return _build(500, {'message': 'Error interno de autenticación'})
 
 
 def confirm_mfa(event):

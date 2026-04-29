@@ -14,6 +14,28 @@ usuarios = dynamodb.Table(os.environ['USUARIOS_TABLE'])
 procesos = dynamodb.Table(os.environ['PROCESOS_TABLE'])
 MESES_EXCLUSIVIDAD = 3
 
+sqs_client = boto3.client('sqs')
+SQS_URL = os.environ.get('SQS_URL')
+
+
+def _publicar_evento(tipo, proyecto_id, inmobiliaria_id, metadata=None):
+    if not SQS_URL:
+        return
+    try:
+        sqs_client.send_message(
+            QueueUrl=SQS_URL,
+            MessageBody=json.dumps({
+                'tipo': tipo,
+                'timestamp': datetime.now(timezone.utc).isoformat(),
+                'proyecto_id': proyecto_id,
+                'inmobiliaria_id': inmobiliaria_id,
+                'metadata': metadata or {},
+            }),
+        )
+    except Exception as e:
+        import logging
+        logging.getLogger().warning(f'Error publicando evento {tipo}: {e}')
+
 
 def _now():
     return datetime.now(timezone.utc).isoformat()
@@ -83,6 +105,13 @@ def registrar(event):
         # Normalizar ambos lados para comparar sin prefijo INMOBILIARIA#
         item_inmo = item.get('inmobiliaria_id', '').replace('INMOBILIARIA#', '')
         if item_inmo != inmobiliaria_id:
+            _publicar_evento('intento_duplicado', proyecto_id, inmobiliaria_id, {
+                'cedula': cedula,
+                'nombres': item.get('nombres', ''),
+                'apellidos': item.get('apellidos', ''),
+                'inmobiliaria_con_exclusividad': item_inmo,
+                'inmobiliaria_solicitante': inmobiliaria_id,
+            })
             return conflict(
                 'Este cliente tiene exclusividad activa con otra inmobiliaria en este proyecto. '
                 'Contacta a JAM Construcciones.'
@@ -172,6 +201,13 @@ def _crear(pk, sk, body, cedula, inmobiliaria_id, proyecto_id):
         })
 
     sched.crear_schedule_vencimiento(cedula, inmobiliaria_id, proyecto_id, ts_venc_eb)
+
+    _publicar_evento('cliente_captado', proyecto_id, inmobiliaria_id, {
+        'cedula': cedula,
+        'nombres': item['nombres'],
+        'apellidos': item['apellidos'],
+    })
+
     return created(item)
 
 
@@ -479,6 +515,13 @@ def registrar_publico(event):
     for item in resultado.get('Items', []):
         item_inmo = item.get('inmobiliaria_id', '').replace('INMOBILIARIA#', '')
         if item_inmo != inmobiliaria_id:
+            _publicar_evento('intento_duplicado', proyecto_id, inmobiliaria_id, {
+                'cedula': cedula,
+                'nombres': body.get('nombres', ''),
+                'apellidos': body.get('apellidos', ''),
+                'inmobiliaria_con_exclusividad': item_inmo,
+                'inmobiliaria_solicitante': inmobiliaria_id,
+            })
             return conflict(
                 'Este cliente tiene exclusividad activa con otra inmobiliaria en este proyecto. '
                 'Contacta a JAM Construcciones.'

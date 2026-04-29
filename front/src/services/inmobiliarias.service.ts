@@ -42,7 +42,7 @@ export const eliminarInmobiliaria = (pk: string): Promise<void> =>
 export const getUsuariosInmobiliaria = (pk: string): Promise<UsuarioInmo[]> =>
   apiGet(`/admin/inmobiliarias/${inmoId(pk)}/usuarios`);
 
-export const crearUsuarioInmobiliaria = (pk: string, data: { username: string; password: string; nombre?: string }): Promise<void> =>
+export const crearUsuarioInmobiliaria = (pk: string, data: { username: string; password: string; nombre?: string; correo?: string }): Promise<void> =>
   apiPost(`/admin/inmobiliarias/${inmoId(pk)}/usuarios`, data);
 
 export const deshabilitarUsuario = (inmoPk: string, usuarioPk: string): Promise<void> =>

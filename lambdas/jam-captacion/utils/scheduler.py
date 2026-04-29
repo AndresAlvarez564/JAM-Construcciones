@@ -17,23 +17,29 @@ def _schedule_name(cedula, inmobiliaria_id, proyecto_id):
 
 def crear_schedule_vencimiento(cedula, inmobiliaria_id, proyecto_id, ts_vencimiento_iso):
     """Crea un schedule one-time para vencer la exclusividad a los 3 meses."""
-    scheduler.create_schedule(
-        Name=_schedule_name(cedula, inmobiliaria_id, proyecto_id),
-        ScheduleExpression=f"at({ts_vencimiento_iso})",
-        ScheduleExpressionTimezone='UTC',
-        FlexibleTimeWindow={'Mode': 'OFF'},
-        Target={
-            'Arn': CAPTACION_LAMBDA_ARN,
-            'RoleArn': SCHEDULER_ROLE_ARN,
-            'Input': json.dumps({
-                'accion': 'vencer_exclusividad',
-                'cedula': cedula,
-                'inmobiliaria_id': inmobiliaria_id,
-                'proyecto_id': proyecto_id,
-            }),
-        },
-        ActionAfterCompletion='DELETE',
-    )
+    if not CAPTACION_LAMBDA_ARN or not SCHEDULER_ROLE_ARN:
+        print(f'crear_schedule_vencimiento: ARNs no configurados, omitiendo schedule para {cedula}')
+        return
+    try:
+        scheduler.create_schedule(
+            Name=_schedule_name(cedula, inmobiliaria_id, proyecto_id),
+            ScheduleExpression=f"at({ts_vencimiento_iso})",
+            ScheduleExpressionTimezone='UTC',
+            FlexibleTimeWindow={'Mode': 'OFF'},
+            Target={
+                'Arn': CAPTACION_LAMBDA_ARN,
+                'RoleArn': SCHEDULER_ROLE_ARN,
+                'Input': json.dumps({
+                    'accion': 'vencer_exclusividad',
+                    'cedula': cedula,
+                    'inmobiliaria_id': inmobiliaria_id,
+                    'proyecto_id': proyecto_id,
+                }),
+            },
+            ActionAfterCompletion='DELETE',
+        )
+    except Exception as e:
+        print(f'crear_schedule_vencimiento error: {type(e).__name__}: {e}')
 
 
 def eliminar_schedule_vencimiento(cedula, inmobiliaria_id, proyecto_id):

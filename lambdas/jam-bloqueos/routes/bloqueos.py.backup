@@ -16,8 +16,8 @@ usuarios = dynamodb.Table(os.environ['USUARIOS_TABLE'])
 sqs = boto3.client('sqs')
 SQS_URL = os.environ.get('SQS_URL', '')
 
-HORAS_BLOQUEO = 5/60  # 5 minutos en lugar de 48 horas
-HORAS_ALERTA = 1/60   # 1 minuto en lugar de 43 horas (4 min antes del vencimiento)
+HORAS_BLOQUEO = 48
+HORAS_ALERTA = 43
 HORAS_REBLOQUEO = 24
 
 

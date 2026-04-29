@@ -8,6 +8,9 @@ import * as cloudfront from 'aws-cdk-lib/aws-cloudfront';
 import * as origins from 'aws-cdk-lib/aws-cloudfront-origins';
 import * as iam from 'aws-cdk-lib/aws-iam';
 import * as sqs from 'aws-cdk-lib/aws-sqs';
+import * as lambdaEventSources from 'aws-cdk-lib/aws-lambda-event-sources';
+import * as backup from 'aws-cdk-lib/aws-backup';
+import * as events from 'aws-cdk-lib/aws-events';
 import { Construct } from 'constructs';
 import * as path from 'path';
 
@@ -41,6 +44,10 @@ export class JamStack extends cdk.Stack {
         userSrp: true,
       },
       generateSecret: false,
+      // Configurar tiempos de token más largos
+      accessTokenValidity: cdk.Duration.hours(8),    // 8 horas en lugar de 1
+      idTokenValidity: cdk.Duration.hours(8),        // 8 horas en lugar de 1
+      refreshTokenValidity: cdk.Duration.days(30),   // 30 días (por defecto)
     });
 
     new cognito.CfnUserPoolGroup(this, 'AdminGroup', {
@@ -251,10 +258,16 @@ export class JamStack extends cdk.Stack {
 
     // ─── SQS jam-notificaciones-queue ────────────────────────────────────────
 
+    const notificacionesDlq = new sqs.Queue(this, 'JamNotificacionesDlq', {
+      queueName: 'jam-notificaciones-dlq',
+      retentionPeriod: cdk.Duration.days(14),
+    });
+
     const notificacionesQueue = new sqs.Queue(this, 'JamNotificacionesQueue', {
       queueName: 'jam-notificaciones-queue',
       retentionPeriod: cdk.Duration.days(7),
       visibilityTimeout: cdk.Duration.seconds(60),
+      deadLetterQueue: { queue: notificacionesDlq, maxReceiveCount: 3 },
     });
 
     // ─── IAM Role para EventBridge Scheduler ─────────────────────────────────
@@ -326,6 +339,7 @@ export class JamStack extends cdk.Stack {
         PROCESOS_TABLE: procesosTable.tableName,
         CAPTACION_LAMBDA_ARN: captacionLambdaArn,
         SCHEDULER_ROLE_ARN: schedulerRole.roleArn,
+        SQS_URL: notificacionesQueue.queueUrl,
       },
     });
 
@@ -333,6 +347,7 @@ export class JamStack extends cdk.Stack {
     usuariosTable.grantReadData(captacionLambda);
     inventarioTable.grantReadData(captacionLambda);
     procesosTable.grantReadWriteData(captacionLambda);
+    notificacionesQueue.grantSendMessages(captacionLambda);
 
     // jam-bloqueos también necesita leer/escribir clientes para desvincular unidades
     clientesTable.grantReadWriteData(bloqueosLambda);
@@ -797,6 +812,69 @@ export class JamStack extends cdk.Stack {
     assetsBucket.grantReadWrite(proyectosLambda);
     proyectosLambda.addEnvironment('ASSETS_BUCKET', assetsBucket.bucketName);
     proyectosLambda.addEnvironment('CLOUDFRONT_URL', `https://${distribution.distributionDomainName}`);
+
+    // ─── AWS BACKUP ─────────────────────────────────────────────────────────
+
+    const backupVault = new backup.BackupVault(this, 'JamBackupVault', {
+      backupVaultName: 'jam-backup-vault',
+      removalPolicy: cdk.RemovalPolicy.RETAIN,
+    });
+
+    const backupPlan = new backup.BackupPlan(this, 'JamBackupPlan', {
+      backupPlanName: 'jam-backup-plan',
+      backupVault,
+      backupPlanRules: [
+        new backup.BackupPlanRule({
+          ruleName: 'jam-daily-backup',
+          scheduleExpression: events.Schedule.cron({ hour: '4', minute: '0' }), // 12am RD (UTC-4)
+          deleteAfter: cdk.Duration.days(30),
+          startWindow: cdk.Duration.hours(1),
+          completionWindow: cdk.Duration.hours(3),
+        }),
+      ],
+    });
+
+    backupPlan.addSelection('JamBackupSelection', {
+      backupSelectionName: 'jam-dynamodb-tables',
+      resources: [
+        backup.BackupResource.fromDynamoDbTable(usuariosTable),
+        backup.BackupResource.fromDynamoDbTable(inventarioTable),
+        backup.BackupResource.fromDynamoDbTable(clientesTable),
+        backup.BackupResource.fromDynamoDbTable(procesosTable),
+        backup.BackupResource.fromDynamoDbTable(historialEstatusTable),
+        backup.BackupResource.fromDynamoDbTable(historialTable),
+      ],
+    });
+
+    // ─── LAMBDA jam-notificaciones ───────────────────────────────────────────
+
+    const notificacionesLambda = new lambda.Function(this, 'JamNotificacionesLambda', {
+      functionName: 'jam-notificaciones',
+      runtime: lambda.Runtime.PYTHON_3_12,
+      handler: 'handler.handler',
+      code: lambda.Code.fromAsset(path.join(__dirname, '../../lambdas/jam-notificaciones')),
+      timeout: cdk.Duration.seconds(30),
+      environment: {
+        ADMIN_EMAIL: 'alvarez@methodicatechnology.com',
+        FROM_EMAIL: 'alvarez@methodicatechnology.com',
+        USUARIOS_TABLE: usuariosTable.tableName,
+        CLIENTES_TABLE: clientesTable.tableName,
+        INVENTARIO_TABLE: inventarioTable.tableName,
+      },
+    });
+
+    notificacionesQueue.grantConsumeMessages(notificacionesLambda);
+    notificacionesLambda.addEventSource(
+      new lambdaEventSources.SqsEventSource(notificacionesQueue, { batchSize: 5 })
+    );
+    usuariosTable.grantReadData(notificacionesLambda);
+    clientesTable.grantReadData(notificacionesLambda);
+    inventarioTable.grantReadData(notificacionesLambda);
+
+    notificacionesLambda.addToRolePolicy(new iam.PolicyStatement({
+      actions: ['ses:SendEmail', 'ses:SendRawEmail'],
+      resources: ['*'],
+    }));
 
     // ─── OUTPUTS ────────────────────────────────────────────────────────────
 

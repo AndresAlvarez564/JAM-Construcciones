@@ -139,7 +139,7 @@ const DashboardPage = () => {
   const proyectoActual = proyectos.find(p => p.proyecto_id === proyectoId);
 
   return (
-    <div style={{ maxWidth: 1280 }}>
+    <div>
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24, flexWrap: 'wrap', gap: 12 }}>
         <div>

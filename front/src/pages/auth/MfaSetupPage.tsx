@@ -1,9 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Card, Typography, Input, Button, Alert, Steps, Form, Spin } from 'antd';
-import { useNavigate } from 'react-router-dom';
 import { initMfaSetup, completeMfaSetup } from '../../services/auth.service';
 import QRCode from 'qrcode';
-import useAuth from '../../hooks/useAuth';
 
 const { Title, Text, Paragraph } = Typography;
 
@@ -13,8 +11,6 @@ const MfaSetupPage = () => {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [loadingSetup, setLoadingSetup] = useState(true);
-  const navigate = useNavigate();
-  const { refetch } = useAuth();
 
   useEffect(() => {
     const init = async () => {

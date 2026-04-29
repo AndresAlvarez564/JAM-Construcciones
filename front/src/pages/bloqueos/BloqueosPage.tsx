@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import {
-  Typography, Table, Tag, Button, Space, Popconfirm,
-  Modal, Form, InputNumber, Input, message, Tooltip, Badge, Tabs,
+  Typography, Table, Tag, Button, Space,
+  Modal, Form, InputNumber, Input, message, Badge, Tabs,
   DatePicker, Select, Divider, Radio, Dropdown, Grid,
 } from 'antd';
 import {
@@ -213,15 +213,15 @@ const BloqueosPage = () => {
     }
   };
 
-  const handleExtender = async (values: { horas_extra: number; justificacion: string }) => {
+  const handleExtender = async (values: { horas_restantes: number; justificacion: string }) => {
     if (!bloqueoSeleccionado) return;
     try {
       await extenderBloqueo(bloqueoSeleccionado.unidad_id, bloqueoSeleccionado.proyecto_id, values);
-      message.success('Bloqueo extendido');
+      message.success(`Tiempo de bloqueo actualizado a ${values.horas_restantes} horas`);
       setModalExtender(false);
       cargar();
     } catch {
-      message.error('Error al extender bloqueo');
+      message.error('Error al actualizar tiempo de bloqueo');
     }
   };
 
@@ -268,7 +268,7 @@ const BloqueosPage = () => {
       render: (_: unknown, record: Bloqueo) => {
         const items = [
           ...(!record.cliente_cedula ? [{ key: 'asignar', icon: <UserAddOutlined />, label: 'Asignar cliente', onClick: () => abrirAsignarCliente(record) }] : []),
-          { key: 'extender', icon: <FieldTimeOutlined />, label: 'Extender', onClick: () => abrirExtender(record) },
+          { key: 'extender', icon: <FieldTimeOutlined />, label: 'Cambiar tiempo', onClick: () => abrirExtender(record) },
           {
             key: 'liberar', icon: <UnlockOutlined />, label: 'Liberar', danger: true,
             onClick: () => Modal.confirm({
@@ -312,7 +312,7 @@ const BloqueosPage = () => {
                   const color = tiempoOk <= 0 ? '#ff4d4f' : tiempoOk < 5 * 3600 ? '#faad14' : '#52c41a';
                   const menuItems = [
                     ...(!b.cliente_cedula ? [{ key: 'asignar', icon: <UserAddOutlined />, label: 'Asignar cliente', onClick: () => abrirAsignarCliente(b) }] : []),
-                    { key: 'extender', icon: <FieldTimeOutlined />, label: 'Extender', onClick: () => abrirExtender(b) },
+                    { key: 'extender', icon: <FieldTimeOutlined />, label: 'Cambiar tiempo', onClick: () => abrirExtender(b) },
                     { key: 'liberar', icon: <UnlockOutlined />, label: 'Liberar', danger: true, onClick: () => Modal.confirm({ title: '¿Liberar este bloqueo?', content: 'La unidad volverá a estar disponible.', okText: 'Liberar', cancelText: 'Cancelar', okButtonProps: { danger: true }, onOk: () => handleLiberar(b) }) },
                   ];
                   return (
@@ -399,11 +399,11 @@ const BloqueosPage = () => {
       />
 
       <Modal
-        title="Extender bloqueo"
+        title="Establecer tiempo restante"
         open={modalExtender}
         onCancel={() => setModalExtender(false)}
         onOk={() => form.submit()}
-        okText="Extender"
+        okText="Aplicar"
         cancelText="Cancelar"
       >
         {bloqueoSeleccionado && (
@@ -422,11 +422,49 @@ const BloqueosPage = () => {
           </div>
         )}
         <Form form={form} layout="vertical" onFinish={handleExtender}>
-          <Form.Item name="horas_extra" label="Horas adicionales" initialValue={24} rules={[{ required: true }]}>
-            <InputNumber min={1} max={168} style={{ width: '100%' }} addonAfter="horas" />
+          <Form.Item 
+            name="horas_restantes" 
+            label="Tiempo restante deseado" 
+            initialValue={1} 
+            rules={[
+              { required: true, message: 'El tiempo restante es requerido' },
+              {
+                validator: (_, value) => {
+                  if (value === null || value === undefined) {
+                    return Promise.reject(new Error('El tiempo restante es requerido'));
+                  }
+                  if (value < 0.02) {
+                    return Promise.reject(new Error('Mínimo 1 minuto (0.02 horas)'));
+                  }
+                  if (value > 168) {
+                    return Promise.reject(new Error('Máximo 168 horas (7 días)'));
+                  }
+                  return Promise.resolve();
+                }
+              }
+            ]}
+            help="Establece cuánto tiempo quieres que quede desde ahora hasta la liberación"
+          >
+            <InputNumber 
+              min={0.02} 
+              max={168} 
+              step={0.1}
+              style={{ width: '100%' }} 
+              addonAfter="horas"
+              placeholder="Ej: 0.1 (6 min), 1 (1 hora), 24 (1 día)"
+            />
           </Form.Item>
+          <div style={{ marginBottom: 16, padding: 8, background: '#f6f6f6', borderRadius: 4, fontSize: 12 }}>
+            <Text type="secondary">
+              💡 <strong>Ejemplos:</strong><br/>
+              • 0.1 horas = 6 minutos (para probar notificaciones)<br/>
+              • 1 hora = 1 hora<br/>
+              • 24 horas = 1 día<br/>
+              • 48 horas = 2 días (tiempo normal)
+            </Text>
+          </div>
           <Form.Item name="justificacion" label="Justificación" rules={[{ required: true, message: 'La justificación es requerida' }]}>
-            <Input.TextArea rows={3} placeholder="Motivo de la extensión..." />
+            <Input.TextArea rows={3} placeholder="Motivo del cambio de tiempo..." />
           </Form.Item>
         </Form>
       </Modal>

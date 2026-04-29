@@ -14,3 +14,11 @@ def get_nombre(event):
 def require_admin(event):
     groups = get_claims(event).get('cognito:groups', '')
     return any(g in groups for g in ('admin', 'coordinador', 'supervisor'))
+
+
+def get_rol(event):
+    groups = get_claims(event).get('cognito:groups', '')
+    for rol in ('admin', 'coordinador', 'supervisor'):
+        if rol in groups:
+            return rol
+    return 'inmobiliaria'

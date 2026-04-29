@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
+import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
 import type { Usuario } from '../types';
 import { getMe, logout as doLogout } from '../services/auth.service';
 import { fetchAuthSession } from 'aws-amplify/auth';

@@ -74,8 +74,12 @@ def crear(inmo_id, event):
     except ClientError as e:
         code = e.response['Error']['Code']
         if code == 'UsernameExistsException':
-            return _build(409, {'message': 'El nombre de usuario ya existe'})
-        return _build(500, {'message': f'Error al crear usuario: {code}'})
+            return _build(409, {'message': f'El nombre de usuario "{username}" ya está en uso, elige otro'})
+        if code == 'InvalidPasswordException':
+            return _build(400, {'message': 'La contraseña no cumple los requisitos: mínimo 8 caracteres, una mayúscula y un número'})
+        if code == 'InvalidParameterException':
+            return _build(400, {'message': f'Parámetro inválido: {e.response["Error"]["Message"]}'})
+        return _build(500, {'message': f'Error al crear usuario en Cognito: {code}'})
 
 
 def deshabilitar(usuario_id):
@@ -98,7 +102,11 @@ def eliminar(usuario_id):
         table.delete_item(Key={'pk': f'USUARIO#{usuario_id}', 'sk': 'METADATA'})
         return ok({'message': 'Usuario eliminado'})
     except ClientError as e:
-        return _build(500, {'message': f'Error: {e.response["Error"]["Code"]}'})
+        code = e.response['Error']['Code']
+        if code == 'UserNotFoundException':
+            table.delete_item(Key={'pk': f'USUARIO#{usuario_id}', 'sk': 'METADATA'})
+            return ok({'message': 'Usuario eliminado'})
+        return _build(500, {'message': f'No se pudo eliminar el usuario: {code}'})
 
 
 def _set_activo(usuario_id, activo):
@@ -128,5 +136,5 @@ def _set_activo(usuario_id, activo):
         errors.append(f'DynamoDB: {e.response["Error"]["Code"]}')
 
     if errors:
-        return _build(500, {'message': f'Errores parciales: {", ".join(errors)}'})
+        return _build(500, {'message': f'No se pudo {"habilitar" if activo else "deshabilitar"} el usuario correctamente: {", ".join(errors)}'})
     return ok({'message': 'OK', 'activo': activo})

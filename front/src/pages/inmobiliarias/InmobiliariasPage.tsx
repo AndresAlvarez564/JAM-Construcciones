@@ -418,8 +418,9 @@ const InmobiliariasPage = () => {
             <Input placeholder="correo@ejemplo.com" />
           </Form.Item>
           <Form.Item name="password" label="Contraseña temporal"
-            rules={[{ required: true, message: 'Requerido' }, { min: 8, message: 'Mínimo 8 caracteres' }]}>
-            <Input.Password placeholder="Mínimo 8 caracteres, 1 mayúscula, 1 número" />
+            rules={[{ required: true, message: 'Requerido' }, { min: 8, message: 'Mínimo 8 caracteres' }]}
+            extra="Mínimo 8 caracteres, al menos 1 mayúscula, 1 número y 1 carácter especial (ej: !@#$)">
+            <Input.Password placeholder="Ej: MiClave1!" />
           </Form.Item>
         </Form>
       </Modal>
