@@ -6,12 +6,13 @@ import {
 import {
   UploadOutlined, RobotOutlined, CheckCircleOutlined,
   WarningOutlined, CloseCircleOutlined, InfoCircleOutlined,
-  ThunderboltOutlined,
+  ThunderboltOutlined, PlusOutlined,
 } from '@ant-design/icons';
 import {
   getUploadUrl, uploadExcel, getPreview, confirmarMigracion,
   type FilaMigracion, type ReporteMigracion,
 } from '../../services/migracion.service';
+import { getInmobiliarias, type Inmobiliaria } from '../../services/inmobiliarias.service';
 
 const { Title, Text } = Typography;
 const { Option } = Select;
@@ -38,7 +39,13 @@ export default function MigracionExcel({ proyectoId, proyectoNombre, onCerrar }:
   const [archivoNombre, setArchivoNombre] = useState('');
   const [reporte, setReporte] = useState<ReporteMigracion | null>(null);
   const [error, setError] = useState('');
+  const [inmobiliarias, setInmobiliarias] = useState<Inmobiliaria[]>([]);
   const tableRef = useRef<HTMLDivElement>(null);
+
+  // Cargar inmobiliarias al montar
+  useEffect(() => {
+    getInmobiliarias().then(setInmobiliarias).catch(() => {});
+  }, []);
 
   // ── Scroll horizontal con Shift+Scroll ───────────────────────────────────
   useEffect(() => {
@@ -109,7 +116,12 @@ export default function MigracionExcel({ proyectoId, proyectoNombre, onCerrar }:
   const actualizarFila = useCallback((idUnidad: string, campo: keyof FilaMigracion, valor: unknown) => {
     setFilas(prev => prev.map(f => {
       if (f.id_unidad !== idUnidad) return f;
-      const updated = { ...f, [campo]: valor };
+      let updated = { ...f, [campo]: valor };
+      // Si el admin cambia la inmobiliaria manualmente, limpiar el ID sugerido
+      // para que el writer haga lookup por nombre
+      if (campo === 'inmobiliaria_nombre_sugerido') {
+        updated = { ...updated, inmobiliaria_id_sugerido: null };
+      }
       const { errores, advertencias } = validarFila(updated);
       return { ...updated, errores, advertencias };
     }));
@@ -238,13 +250,42 @@ export default function MigracionExcel({ proyectoId, proyectoNombre, onCerrar }:
       ),
     },
     {
-      title: 'Inmobiliaria', dataIndex: 'inmobiliaria_nombre_sugerido', width: 150,
-      render: (v: string | null, r: FilaMigracion) => (
-        <CeldaIA sugerido={r.ia_sugerido && !!v} confianza={r.inmobiliaria_confianza} esNueva={r.inmobiliaria_es_nueva}>
-          <Input value={v ?? ''} placeholder="Sin inmobiliaria"
-            onChange={e => actualizarFila(r.id_unidad, 'inmobiliaria_nombre_sugerido', e.target.value)} />
-        </CeldaIA>
-      ),
+      title: 'Inmobiliaria', dataIndex: 'inmobiliaria_nombre_sugerido', width: 180,
+      render: (v: string | null, r: FilaMigracion) => {
+        const esNueva = !inmobiliarias.some(
+          i => i.nombre.trim().toLowerCase() === (v ?? '').trim().toLowerCase()
+        ) && !!v;
+        return (
+          <Tooltip title={esNueva ? 'Inmobiliaria nueva — se creará al confirmar' : r.ia_sugerido && !!v ? `Sugerido por IA` : undefined}>
+            <Select
+              value={v ?? undefined}
+              placeholder="Seleccionar..."
+              style={{ width: '100%', borderColor: esNueva ? '#faad14' : undefined }}
+              allowClear
+              showSearch
+              optionFilterProp="label"
+              onChange={val => actualizarFila(r.id_unidad, 'inmobiliaria_nombre_sugerido', val ?? null)}
+              dropdownRender={menu => (
+                <>
+                  {menu}
+                  <div style={{ padding: '4px 8px', borderTop: '1px solid #f0f0f0' }}>
+                    <Text type="secondary" style={{ fontSize: 11 }}>
+                      <PlusOutlined /> Escribe un nombre nuevo para crear una inmobiliaria
+                    </Text>
+                  </div>
+                </>
+              )}
+            >
+              {inmobiliarias.filter(i => i.activo).map(i => (
+                <Select.Option key={i.pk} value={i.nombre} label={i.nombre}>
+                  {i.nombre}
+                  {i.pk.includes('migracion') && <Tag style={{ marginLeft: 6 }} color="orange">borrador</Tag>}
+                </Select.Option>
+              ))}
+            </Select>
+          </Tooltip>
+        );
+      },
     },
     { title: 'Tipo', dataIndex: 'tipo', width: 70,
       render: (v: string | null, r: FilaMigracion) => <Input value={v ?? ''} onChange={e => actualizarFila(r.id_unidad, 'tipo', e.target.value)} /> },
@@ -291,17 +332,66 @@ export default function MigracionExcel({ proyectoId, proyectoNombre, onCerrar }:
 
       {/* PASO 1 */}
       {paso === 'upload' && (
-        <div style={{ textAlign: 'center', padding: '40px 0' }}>
-          <Title level={4}>Migración de inventario — {proyectoNombre}</Title>
-          <Text type="secondary" style={{ display: 'block', marginBottom: 24 }}>
-            Sube el archivo Excel con el inventario. Solo aplica a proyectos sin unidades.
-          </Text>
-          {error && <Alert type="error" message={error} style={{ marginBottom: 16 }} />}
-          <Spin spinning={cargando} tip="Procesando con IA...">
-            <Upload accept=".xlsx" showUploadList={false} beforeUpload={file => { handleUpload(file); return false; }}>
-              <Button icon={<UploadOutlined />} size="large" type="primary">Seleccionar archivo .xlsx</Button>
-            </Upload>
-          </Spin>
+        <div>
+          {/* Guía de formato */}
+          <Alert
+            type="info"
+            icon={<InfoCircleOutlined />}
+            style={{ marginBottom: 20 }}
+            message="Antes de subir, asegúrate que tu Excel tenga estas columnas"
+            description={
+              <div style={{ marginTop: 8, overflowX: 'auto' }}>
+                <table style={{ borderCollapse: 'collapse', fontSize: 12, whiteSpace: 'nowrap' }}>
+                  <thead>
+                    <tr style={{ background: '#e6f4ff' }}>
+                      {[
+                        'unidad','Area','No Cuartos','No. baños','Tipo','Piso','Parqueos',
+                        'NOMBRE CLIENTE','Precios US$','RESERVA','SEPARACION','INICIAL',
+                        'CUOTAS 24','CONTRA ENTREGA','ESTATUS','INMOBILIARIA',
+                        'FECHA BLOQUEO','FECHA FIN BLOQUEO/ PAGO SEPARACION','COMENTARIO',
+                      ].map(h => (
+                        <th key={h} style={{ border: '1px solid #91caff', padding: '4px 8px', color: '#1677ff', fontWeight: 600 }}>{h}</th>
+                      ))}
+                    </tr>
+                    <tr style={{ background: '#fafafa' }}>
+                      {[
+                        'B-A-101','76.34','3','2','D','1','1',
+                        'JOSE MIGUEL BARRERA','75958.30','500','3297.91','11393.74',
+                        '474.73','60766.64','CONTRATO FIRMADO','Plusval',
+                        '2026-02-21','2026-03-21','',
+                      ].map((v, i) => (
+                        <td key={i} style={{ border: '1px solid #d9d9d9', padding: '4px 8px', color: '#555' }}>{v || <span style={{ color: '#bbb' }}>vacío</span>}</td>
+                      ))}
+                    </tr>
+                  </thead>
+                </table>
+                <div style={{ marginTop: 8, display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                  <Tag color="blue">unidad — obligatorio</Tag>
+                  <Tag color="blue">Precios US$ — obligatorio</Tag>
+                  <Tag color="blue">Area — obligatorio</Tag>
+                  <Tag color="blue">ESTATUS — obligatorio</Tag>
+                  <Tag color="default">El resto es opcional</Tag>
+                  <Tag color="orange">Si hay cliente, INMOBILIARIA también es obligatoria</Tag>
+                </div>
+                <div style={{ marginTop: 6, color: '#888', fontSize: 11 }}>
+                  💡 Los nombres de columna no tienen que ser exactos — la IA intenta mapearlos automáticamente. Pero si coinciden, el resultado es más preciso.
+                </div>
+              </div>
+            }
+          />
+
+          <div style={{ textAlign: 'center', padding: '24px 0' }}>
+            <Title level={4}>Migración de inventario — {proyectoNombre}</Title>
+            <Text type="secondary" style={{ display: 'block', marginBottom: 24 }}>
+              Sube el archivo Excel con el inventario. Solo aplica a proyectos sin unidades.
+            </Text>
+            {error && <Alert type="error" message={error} style={{ marginBottom: 16 }} />}
+            <Spin spinning={cargando} tip="Procesando con IA...">
+              <Upload accept=".xlsx" showUploadList={false} beforeUpload={file => { handleUpload(file); return false; }}>
+                <Button icon={<UploadOutlined />} size="large" type="primary">Seleccionar archivo .xlsx</Button>
+              </Upload>
+            </Spin>
+          </div>
         </div>
       )}
 

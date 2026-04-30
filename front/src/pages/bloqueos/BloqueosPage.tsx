@@ -216,7 +216,7 @@ const BloqueosPage = () => {
   const handleExtender = async (values: { horas_restantes: number; justificacion: string }) => {
     if (!bloqueoSeleccionado) return;
     try {
-      await extenderBloqueo(bloqueoSeleccionado.unidad_id, bloqueoSeleccionado.proyecto_id, values);
+      await extenderBloqueo(bloqueoSeleccionado.unidad_id, bloqueoSeleccionado.proyecto_id, { horas_extra: values.horas_restantes, justificacion: values.justificacion });
       message.success(`Tiempo de bloqueo actualizado a ${values.horas_restantes} horas`);
       setModalExtender(false);
       cargar();

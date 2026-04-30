@@ -718,6 +718,10 @@ export class JamStack extends cdk.Stack {
       authorizationType: apigateway.AuthorizationType.COGNITO,
     });
     const adminInventarioReportesResource = adminInventarioResource.addResource('reportes');
+    adminInventarioReportesResource.addMethod('GET', proyectosLambdaIntegration, {
+      authorizer: cognitoAuthorizer,
+      authorizationType: apigateway.AuthorizationType.COGNITO,
+    });
     adminInventarioReportesResource.addResource('{job_id}').addMethod('GET', proyectosLambdaIntegration, {
       authorizer: cognitoAuthorizer,
       authorizationType: apigateway.AuthorizationType.COGNITO,

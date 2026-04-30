@@ -79,3 +79,6 @@ export const confirmarMigracion = (jobId: string, filas: FilaMigracion[]): Promi
 
 export const getReporte = (jobId: string): Promise<ReporteMigracion> =>
   apiGet(`/admin/inventario/reportes/${jobId}`);
+
+export const listarReportes = (proyectoId?: string): Promise<ReporteMigracion[]> =>
+  apiGet(`/admin/inventario/reportes${proyectoId ? `?proyecto_id=${proyectoId}` : ''}`);

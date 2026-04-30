@@ -63,39 +63,68 @@ def escribir_migracion(proyecto_id, filas):
 # ─── Helpers internos ────────────────────────────────────────────────────────
 
 def _resolver_inmobiliaria(proyecto_id, fila, cache, stats, ahora, fila_num, id_unidad):
-    inmo_excel = fila.get('inmobiliaria_excel') or ''
-    if not inmo_excel:
+    # Usar el nombre que el admin confirmó/editó, con fallback al nombre del Excel
+    nombre_final = (fila.get('inmobiliaria_nombre_sugerido') or fila.get('inmobiliaria_excel') or '').strip()
+    inmo_excel   = (fila.get('inmobiliaria_excel') or nombre_final).strip()
+
+    if not nombre_final:
         return None
 
-    if inmo_excel in cache:
-        return cache[inmo_excel]
+    # Cache por nombre final (lo que el admin ve y edita)
+    if nombre_final in cache:
+        return cache[nombre_final]
 
+    # Si Bedrock ya resolvió el ID, usarlo directamente
     if fila.get('inmobiliaria_id_sugerido'):
         inmo_id = fila['inmobiliaria_id_sugerido']
         _agregar_proyecto_a_inmo(inmo_id, proyecto_id)
-        cache[inmo_excel] = inmo_id
+        cache[nombre_final] = inmo_id
         return inmo_id
 
-    # Crear nueva — patrón igual que inmobiliarias.py
+    # Buscar por nombre en jam-usuarios (case-insensitive)
+    inmo_id = _buscar_inmo_por_nombre(nombre_final)
+    if inmo_id:
+        _agregar_proyecto_a_inmo(inmo_id, proyecto_id)
+        cache[nombre_final] = inmo_id
+        return inmo_id
+
+    # No existe — crear nueva
     inmo_id = str(uuid.uuid4())[:8].upper()
     usuarios_t.put_item(Item={
         'pk':        f'INMOBILIARIA#{inmo_id}',
         'sk':        'METADATA',
         'tipo':      'INMOBILIARIA',
-        'nombre':    fila.get('inmobiliaria_nombre_sugerido') or inmo_excel,
+        'nombre':    nombre_final,
         'activo':    True,
         'proyectos': [proyecto_id],
         'correos':   [],
         'origen':    'migracion',
         'creado_en': ahora,
     })
-    cache[inmo_excel] = inmo_id
+    cache[nombre_final] = inmo_id
     stats['inmobiliarias_creadas'] += 1
     stats['detalle'].append({
         'fila': fila_num, 'id_unidad': id_unidad, 'tipo': 'info',
-        'motivo': f"Inmobiliaria '{inmo_excel}' creada (origen: migracion)",
+        'motivo': f"Inmobiliaria '{nombre_final}' creada (origen: migracion)",
     })
     return inmo_id
+
+
+def _buscar_inmo_por_nombre(nombre):
+    """Busca inmobiliaria existente por nombre (case-insensitive). Retorna inmo_id o None."""
+    try:
+        from boto3.dynamodb.conditions import Key as DKey
+        result = usuarios_t.query(
+            IndexName='gsi-tipo',
+            KeyConditionExpression=DKey('tipo').eq('INMOBILIARIA'),
+        )
+        nombre_norm = nombre.strip().lower()
+        for item in result.get('Items', []):
+            if item.get('nombre', '').strip().lower() == nombre_norm:
+                return item['pk'].replace('INMOBILIARIA#', '')
+    except Exception:
+        pass
+    return None
 
 
 def _escribir_unidad(proyecto_id, id_unidad, fila, inmo_id, ahora):

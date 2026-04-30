@@ -92,7 +92,51 @@ def confirmar(job_id, event):
         Body=json.dumps(reporte, ensure_ascii=False, default=str),
         ContentType='application/json',
     )
+
+    # Borrar el Excel original — ya no se necesita después de confirmar
+    try:
+        excel_key = f'inventario/uploads/{proyecto_id}/{job_id}.xlsx'
+        s3_client.delete_object(Bucket=ARCHIVOS_BUCKET, Key=excel_key)
+    except Exception:
+        pass  # No crítico si falla el borrado
+
     return ok(reporte)
+
+
+def listar_reportes(event):
+    """GET /admin/inventario/reportes?proyecto_id=xxx — lista historial de migraciones."""
+    qs          = event.get('queryStringParameters') or {}
+    proyecto_id = qs.get('proyecto_id', '').strip()
+
+    paginator = s3_client.get_paginator('list_objects_v2')
+    pages     = paginator.paginate(Bucket=ARCHIVOS_BUCKET, Prefix='inventario/reportes/')
+
+    reportes = []
+    for page in pages:
+        for obj in page.get('Contents', []):
+            try:
+                body = s3_client.get_object(Bucket=ARCHIVOS_BUCKET, Key=obj['Key'])
+                data = json.loads(body['Body'].read())
+                # Filtrar por proyecto si se especifica
+                if proyecto_id and data.get('proyecto_id') != proyecto_id:
+                    continue
+                reportes.append({
+                    'job_id':           data.get('job_id'),
+                    'archivo':          data.get('archivo'),
+                    'proyecto_id':      data.get('proyecto_id'),
+                    'total_filas':      data.get('total_filas', 0),
+                    'unidades_cargadas': data.get('unidades_cargadas', 0),
+                    'clientes_creados': data.get('clientes_creados', 0),
+                    'inmobiliarias_creadas': data.get('inmobiliarias_creadas', 0),
+                    'advertencias':     data.get('advertencias', 0),
+                    'completado_en':    data.get('completado_en'),
+                })
+            except Exception:
+                continue
+
+    # Ordenar por fecha descendente
+    reportes.sort(key=lambda r: r.get('completado_en') or '', reverse=True)
+    return ok(reportes)
 
 
 def get_reporte(job_id):
