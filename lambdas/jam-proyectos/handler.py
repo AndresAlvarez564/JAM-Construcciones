@@ -1,6 +1,6 @@
 from utils.auth import get_rol, require_admin
 from utils.response import forbidden, not_found
-from routes import proyectos, etapas, unidades
+from routes import proyectos, etapas, unidades, excel
 
 
 def handler(event, context):
@@ -11,6 +11,7 @@ def handler(event, context):
     proyecto_id = path_params.get('proyecto_id')
     unidad_id = path_params.get('unidad_id')
     etapa_id = path_params.get('etapa_id')
+    job_id = path_params.get('job_id')
     is_admin = '/admin/' in path or path.startswith('/admin/')
 
     # ===== LECTURA =====
@@ -33,6 +34,20 @@ def handler(event, context):
     # ===== ADMIN: guard =====
     if is_admin and not require_admin(event):
         return forbidden()
+
+    # ===== MIGRACIONES EXCEL =====
+
+    if method == 'GET' and path.endswith('/inventario/upload-url'):
+        return excel.get_upload_url(event)
+
+    if method == 'GET' and job_id and '/inventario/preview/' in path:
+        return excel.get_preview(job_id)
+
+    if method == 'POST' and job_id and '/inventario/confirmar/' in path:
+        return excel.confirmar(job_id, event)
+
+    if method == 'GET' and job_id and '/inventario/reportes/' in path:
+        return excel.get_reporte(job_id)
 
     # ===== PROYECTOS =====
 

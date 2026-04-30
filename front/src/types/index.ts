@@ -65,6 +65,8 @@ export interface Unidad {
   manzana?: string;
   piso?: string;
   parqueos?: number;
+  num_cuartos?: number;
+  num_banos?: number;
   comentario?: string;
   estado: string;
   bloqueado_por?: string;

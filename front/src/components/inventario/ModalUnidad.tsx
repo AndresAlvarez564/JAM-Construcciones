@@ -29,6 +29,8 @@ const ModalUnidad = ({ open, modo, etapas, unidadEditando, onCancel, onFinish }:
         metraje_terraza:   unidadEditando.metraje_terraza,
         metraje_patio:     unidadEditando.metraje_patio,
         parqueos:          unidadEditando.parqueos,
+        num_cuartos:       (unidadEditando as any).num_cuartos,
+        num_banos:         (unidadEditando as any).num_banos,
         precio:            unidadEditando.precio,
         precio_reserva:    unidadEditando.precio_reserva,
         precio_separacion: unidadEditando.precio_separacion,
@@ -114,6 +116,16 @@ const ModalUnidad = ({ open, modo, etapas, unidadEditando, onCancel, onFinish }:
           <Col span={8}>
             <Form.Item name="parqueos" label="Parqueos">
               <InputNumber style={{ width: '100%' }} placeholder="1" min={0} max={10} />
+            </Form.Item>
+          </Col>
+          <Col span={8}>
+            <Form.Item name="num_cuartos" label="Cuartos">
+              <InputNumber style={{ width: '100%' }} placeholder="3" min={0} max={20} />
+            </Form.Item>
+          </Col>
+          <Col span={8}>
+            <Form.Item name="num_banos" label="Baños">
+              <InputNumber style={{ width: '100%' }} placeholder="2" min={0} max={20} />
             </Form.Item>
           </Col>
         </Row>

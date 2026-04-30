@@ -4,6 +4,7 @@ import * as dynamodb from 'aws-cdk-lib/aws-dynamodb';
 import * as lambda from 'aws-cdk-lib/aws-lambda';
 import * as apigateway from 'aws-cdk-lib/aws-apigateway';
 import * as s3 from 'aws-cdk-lib/aws-s3';
+import * as s3notifications from 'aws-cdk-lib/aws-s3-notifications';
 import * as cloudfront from 'aws-cdk-lib/aws-cloudfront';
 import * as origins from 'aws-cdk-lib/aws-cloudfront-origins';
 import * as iam from 'aws-cdk-lib/aws-iam';
@@ -700,6 +701,28 @@ export class JamStack extends cdk.Stack {
       authorizationType: apigateway.AuthorizationType.COGNITO,
     });
 
+    // /admin/inventario — migraciones Excel
+    const adminInventarioResource = adminResource.addResource('inventario');
+    adminInventarioResource.addResource('upload-url').addMethod('GET', proyectosLambdaIntegration, {
+      authorizer: cognitoAuthorizer,
+      authorizationType: apigateway.AuthorizationType.COGNITO,
+    });
+    const adminInventarioPreviewResource = adminInventarioResource.addResource('preview');
+    adminInventarioPreviewResource.addResource('{job_id}').addMethod('GET', proyectosLambdaIntegration, {
+      authorizer: cognitoAuthorizer,
+      authorizationType: apigateway.AuthorizationType.COGNITO,
+    });
+    const adminInventarioConfirmarResource = adminInventarioResource.addResource('confirmar');
+    adminInventarioConfirmarResource.addResource('{job_id}').addMethod('POST', proyectosLambdaIntegration, {
+      authorizer: cognitoAuthorizer,
+      authorizationType: apigateway.AuthorizationType.COGNITO,
+    });
+    const adminInventarioReportesResource = adminInventarioResource.addResource('reportes');
+    adminInventarioReportesResource.addResource('{job_id}').addMethod('GET', proyectosLambdaIntegration, {
+      authorizer: cognitoAuthorizer,
+      authorizationType: apigateway.AuthorizationType.COGNITO,
+    });
+
     // /admin/proyectos/{id}/etapas
     const adminEtapasResource = adminProyectoResource.addResource('etapas');
     adminEtapasResource.addMethod('POST', proyectosLambdaIntegration, {
@@ -777,6 +800,23 @@ export class JamStack extends cdk.Stack {
       removalPolicy: cdk.RemovalPolicy.RETAIN,
     });
 
+    // Bucket para archivos de migración (Excel uploads)
+    const archivosBucket = new s3.Bucket(this, 'JamArchivosBucket', {
+      bucketName: `jam-archivos-${this.account}`,
+      blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
+      removalPolicy: cdk.RemovalPolicy.RETAIN,
+      cors: [{
+        allowedMethods: [s3.HttpMethods.PUT, s3.HttpMethods.GET],
+        allowedOrigins: ['*'],
+        allowedHeaders: ['*'],
+        maxAge: 3000,
+      }],
+      lifecycleRules: [{
+        prefix: 'inventario/previews/',
+        expiration: cdk.Duration.days(1),
+      }],
+    });
+
     // Bucket para assets (imágenes de proyectos, etc.)
     const assetsBucket = new s3.Bucket(this, 'JamAssetsBucket', {
       bucketName: `jam-assets-${this.account}`,
@@ -818,6 +858,79 @@ export class JamStack extends cdk.Stack {
     assetsBucket.grantReadWrite(proyectosLambda);
     proyectosLambda.addEnvironment('ASSETS_BUCKET', assetsBucket.bucketName);
     proyectosLambda.addEnvironment('CLOUDFRONT_URL', `https://${distribution.distributionDomainName}`);
+
+    // Permisos: proyectosLambda puede leer/escribir en archivos (Excel migrations)
+    archivosBucket.grantReadWrite(proyectosLambda);
+    proyectosLambda.addEnvironment('ARCHIVOS_BUCKET', archivosBucket.bucketName);
+    // Permisos adicionales para DynamoDB (clientes, procesos, historial, usuarios write)
+    clientesTable.grantReadWriteData(proyectosLambda);
+    procesosTable.grantReadWriteData(proyectosLambda);
+    historialTable.grantReadWriteData(proyectosLambda);
+    usuariosTable.grantReadWriteData(proyectosLambda);
+    proyectosLambda.addEnvironment('CLIENTES_TABLE', clientesTable.tableName);
+    proyectosLambda.addEnvironment('PROCESOS_TABLE', procesosTable.tableName);
+    proyectosLambda.addEnvironment('HISTORIAL_TABLE', historialTable.tableName);
+    // Permiso Bedrock para IA
+    proyectosLambda.addToRolePolicy(new iam.PolicyStatement({
+      actions: ['bedrock:InvokeModel'],
+      resources: [
+        'arn:aws:bedrock:*::foundation-model/anthropic.claude-3-5-haiku-20241022-v1:0',
+        'arn:aws:bedrock:us-east-1:*:inference-profile/us.anthropic.claude-3-5-haiku-20241022-v1:0',
+      ],
+    }));
+
+    // ─── LAMBDA LAYER openpyxl ───────────────────────────────────────────────
+    // Layer con openpyxl para parsear Excel en jam-excel-parser
+    // Para crear el layer: pip install openpyxl -t lambdas/layers/openpyxl/python
+    const openpyxlLayer = new lambda.LayerVersion(this, 'OpenpyxlLayer', {
+      layerVersionName: 'jam-openpyxl',
+      code: lambda.Code.fromAsset(path.join(__dirname, '../../lambdas/layers/openpyxl')),
+      compatibleRuntimes: [lambda.Runtime.PYTHON_3_12],
+      description: 'openpyxl para parseo de archivos Excel',
+    });
+
+    // ─── LAMBDA jam-excel-parser ─────────────────────────────────────────────
+    // Lambda separada para parsear Excel — timeout largo, disparada por evento S3
+
+    const excelParserLambda = new lambda.Function(this, 'JamExcelParserLambda', {
+      functionName: 'jam-excel-parser',
+      runtime: lambda.Runtime.PYTHON_3_12,
+      handler: 'handler_excel_parser.handler',
+      code: lambda.Code.fromAsset(path.join(__dirname, '../../lambdas/jam-proyectos')),
+      timeout: cdk.Duration.minutes(5),
+      layers: [openpyxlLayer],
+      environment: {
+        INVENTARIO_TABLE: inventarioTable.tableName,
+        USUARIOS_TABLE:   usuariosTable.tableName,
+        CLIENTES_TABLE:   clientesTable.tableName,
+        PROCESOS_TABLE:   procesosTable.tableName,
+        HISTORIAL_TABLE:  historialTable.tableName,
+        ARCHIVOS_BUCKET:  archivosBucket.bucketName,
+      },
+    });
+
+    // Permisos DynamoDB
+    inventarioTable.grantReadData(excelParserLambda);
+    usuariosTable.grantReadData(excelParserLambda);
+
+    // Permisos S3 — leer uploads, escribir previews
+    archivosBucket.grantReadWrite(excelParserLambda);
+
+    // Permiso Bedrock
+    excelParserLambda.addToRolePolicy(new iam.PolicyStatement({
+      actions: ['bedrock:InvokeModel'],
+      resources: [
+        'arn:aws:bedrock:*::foundation-model/anthropic.claude-3-5-haiku-20241022-v1:0',
+        'arn:aws:bedrock:us-east-1:*:inference-profile/us.anthropic.claude-3-5-haiku-20241022-v1:0',
+      ],
+    }));
+
+    // Trigger S3: cuando se sube un .xlsx al prefijo inventario/uploads/
+    archivosBucket.addEventNotification(
+      s3.EventType.OBJECT_CREATED,
+      new s3notifications.LambdaDestination(excelParserLambda),
+      { prefix: 'inventario/uploads/', suffix: '.xlsx' },
+    );
 
     // ─── AWS BACKUP ─────────────────────────────────────────────────────────
 

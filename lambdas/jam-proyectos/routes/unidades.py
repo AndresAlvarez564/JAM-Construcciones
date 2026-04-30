@@ -117,11 +117,13 @@ def crear(proyecto_id, event):
         'actualizado_en': ts,
     }
 
-    for campo in ('tipo', 'manzana', 'piso', 'parqueos', 'metraje_terraza', 'metraje_patio', 'comentario',
+    for campo in ('tipo', 'manzana', 'piso', 'parqueos', 'num_cuartos', 'num_banos',
+                  'metraje_terraza', 'metraje_patio', 'comentario',
                   'precio_reserva', 'precio_separacion', 'precio_inicial', 'cuota_monto', 'cuota_meses', 'contra_entrega'):
         if body.get(campo) is not None:
-            item[campo] = body[campo] if campo == 'comentario' else (
-                Decimal(str(body[campo])) if campo in ('parqueos', 'metraje_terraza', 'metraje_patio',
+            item[campo] = body[campo] if campo in ('comentario', 'tipo', 'manzana', 'piso') else (
+                Decimal(str(body[campo])) if campo in ('parqueos', 'num_cuartos', 'num_banos',
+                    'metraje_terraza', 'metraje_patio',
                     'precio_reserva', 'precio_separacion', 'precio_inicial', 'cuota_monto', 'cuota_meses', 'contra_entrega')
                     and body[campo] != '' else body[campo]
             )
@@ -165,10 +167,11 @@ def actualizar(proyecto_id, unidad_id, event):
         except (ValueError, TypeError):
             return bad_request('precio debe ser numérico')
 
-    for campo in ('tipo', 'manzana', 'piso', 'parqueos', 'metraje_terraza', 'metraje_patio', 'comentario',
+    for campo in ('tipo', 'manzana', 'piso', 'parqueos', 'num_cuartos', 'num_banos',
+                  'metraje_terraza', 'metraje_patio', 'comentario',
                   'precio_reserva', 'precio_separacion', 'precio_inicial', 'cuota_monto', 'cuota_meses', 'contra_entrega'):
         if campo in body:
-            if campo in ('parqueos', 'metraje_terraza', 'metraje_patio',
+            if campo in ('parqueos', 'num_cuartos', 'num_banos', 'metraje_terraza', 'metraje_patio',
                          'precio_reserva', 'precio_separacion', 'precio_inicial', 'cuota_monto', 'cuota_meses', 'contra_entrega') \
                     and body[campo] not in (None, ''):
                 try:

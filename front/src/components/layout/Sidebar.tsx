@@ -2,7 +2,7 @@ import { Avatar, Typography, Tooltip, message } from 'antd';
 import {
   AppstoreOutlined, TeamOutlined, DashboardOutlined,
   BankOutlined, UserOutlined, PoweroffOutlined,
-  ApartmentOutlined, LinkOutlined,
+  ApartmentOutlined, LinkOutlined, ImportOutlined,
 } from '@ant-design/icons';
 import { useNavigate, useLocation } from 'react-router-dom';
 import useAuth from '../../hooks/useAuth';
@@ -52,9 +52,16 @@ const Sidebar = ({ onSelect }: Props) => {
     ...(isAdmin ? [{
       title: 'Administración',
       items: [
-        { key: '/inmobiliarias', icon: <BankOutlined />, label: 'Inmobiliarias' },
-        { key: '/procesos', icon: <ApartmentOutlined />, label: 'Procesos' },
-        { key: '/sistema/usuarios', icon: <UserOutlined />, label: 'Usuarios' },
+        { key: '/inmobiliarias',   icon: <BankOutlined />,      label: 'Inmobiliarias' },
+        { key: '/procesos',        icon: <ApartmentOutlined />, label: 'Procesos' },
+        { key: '/migracion',       icon: <ImportOutlined />,    label: 'Migración Excel' },
+        { key: '/sistema/usuarios', icon: <UserOutlined />,     label: 'Usuarios' },
+      ],
+    }] : []),
+    ...(rol === 'coordinador' ? [{
+      title: 'Herramientas',
+      items: [
+        { key: '/migracion', icon: <ImportOutlined />, label: 'Migración Excel' },
       ],
     }] : []),
     ...(rol === 'inmobiliaria' ? [{
